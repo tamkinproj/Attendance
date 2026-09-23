@@ -1,0 +1,20 @@
+# MuslimEdu — send any "page not found" straight to manhaje.com instead
+# of a generic 404 page.
+#
+# WHERE TO PUT THIS FILE
+# -----------------------
+# In the SAME folder as the dashboard's PHP pages - the folder your
+# browser showed as manhaje.com/qq/... (index.php, login.php,
+# sync-status.php, dashboard.js etc. all live there already). If that
+# folder already has a .htaccess file, add just the ErrorDocument line
+# below to it instead of replacing the whole file.
+#
+# DO NOT put this at your site's root, and DO NOT put it inside
+# apps/api (the Laravel backend). Every page in this app calls that API
+# with JavaScript's fetch() expecting a JSON reply back. If a mistyped
+# or missing API call got redirected to the HTML homepage instead of
+# returning a normal 404, every fetch() in the app would silently
+# receive a webpage instead of JSON and fail in confusing ways instead
+# of just erroring cleanly like it does now.
+
+ErrorDocument 404 https://manhaje.com/
