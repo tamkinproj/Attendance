@@ -1,0 +1,51 @@
+package com.muslimedu.attendance.data.local
+
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/**
+ * Which school this device belongs to, persisted across restarts and
+ * independent of whether anyone is logged in - the gate app works fully
+ * offline with no login, so every local row (students, gate scans, face
+ * templates, audit entries) is scoped by this instead of the session.
+ *
+ * Starts [UNBOUND_SCHOOL_ID] on a fresh install. The first successful admin
+ * login binds it (see [com.muslimedu.attendance.data.repository.DeviceBindingRepository]),
+ * moving anything recorded before that onto the real school id. Once bound
+ * it never changes - a login from a different school is refused, so one
+ * school's offline scans can never be uploaded into another's.
+ */
+@Singleton
+class DeviceSettings @Inject constructor(
+    @ApplicationContext context: Context,
+) {
+    private val prefs = context.getSharedPreferences(PREFS_FILE_NAME, Context.MODE_PRIVATE)
+
+    private val _schoolId = MutableStateFlow(prefs.getInt(KEY_SCHOOL_ID, UNBOUND_SCHOOL_ID))
+    val schoolId: StateFlow<Int> = _schoolId.asStateFlow()
+
+    val isBound: Boolean get() = _schoolId.value != UNBOUND_SCHOOL_ID
+
+    fun bindSchool(schoolId: Int) {
+        prefs.edit().putInt(KEY_SCHOOL_ID, schoolId).apply()
+        _schoolId.value = schoolId
+    }
+
+    var lastStudentDownloadAt: Long?
+        get() = prefs.getLong(KEY_LAST_STUDENT_DOWNLOAD, 0L).takeIf { it > 0L }
+        set(value) {
+            prefs.edit().putLong(KEY_LAST_STUDENT_DOWNLOAD, value ?: 0L).apply()
+        }
+
+    companion object {
+        const val UNBOUND_SCHOOL_ID = 0
+        private const val PREFS_FILE_NAME = "device_settings"
+        private const val KEY_SCHOOL_ID = "school_id"
+        private const val KEY_LAST_STUDENT_DOWNLOAD = "last_student_download_at"
+    }
+}

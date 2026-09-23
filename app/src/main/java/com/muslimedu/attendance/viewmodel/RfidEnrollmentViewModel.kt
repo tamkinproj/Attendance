@@ -6,7 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.muslimedu.attendance.data.db.entities.StudentEntity
 import com.muslimedu.attendance.data.local.StudentPhotoCache
 import com.muslimedu.attendance.data.repository.StudentRepository
-import com.muslimedu.attendance.data.session.SessionManager
+import com.muslimedu.attendance.data.local.DeviceSettings
 import com.muslimedu.attendance.rfid.RfidEvent
 import com.muslimedu.attendance.rfid.RfidManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -51,7 +51,7 @@ class RfidEnrollmentViewModel @Inject constructor(
     private val studentRepository: StudentRepository,
     private val rfidManager: RfidManager,
     private val photoCache: StudentPhotoCache,
-    private val sessionManager: SessionManager,
+    private val deviceSettings: DeviceSettings,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<RfidEnrollmentUiState>(RfidEnrollmentUiState.SelectingStudent)
@@ -69,12 +69,9 @@ class RfidEnrollmentViewModel @Inject constructor(
         // registered this (same singleton), which it normally has by the
         // time an admin reaches this screen.
         rfidManager.register()
-        // Re-read the picker's student list on every session change, not once
-        // at construction - see TeacherDashboardViewModel's init. getAll() is
-        // scoped to the logged-in account's school, so this is what stops the
-        // previous account's students showing up in this picker.
+        // Re-read when the device's school changes - getAll() is scoped to it.
         viewModelScope.launch {
-            sessionManager.currentUser.collect {
+            deviceSettings.schoolId.collect {
                 _students.value = studentRepository.getAll()
             }
         }

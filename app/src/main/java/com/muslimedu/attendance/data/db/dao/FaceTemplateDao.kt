@@ -27,4 +27,11 @@ interface FaceTemplateDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(template: FaceTemplateEntity)
+
+    @Query("UPDATE face_templates SET school_id = :toSchoolId WHERE school_id = :fromSchoolId")
+    suspend fun moveToSchool(fromSchoolId: Int, toSchoolId: Int)
+
+    /** Keeps a face enrolled against a hand-added student (negative id) attached once a download gives that student their real server id. */
+    @Query("UPDATE face_templates SET student_id = :newStudentId WHERE school_id = :schoolId AND student_id = :oldStudentId")
+    suspend fun reassignStudent(schoolId: Int, oldStudentId: Int, newStudentId: Int)
 }

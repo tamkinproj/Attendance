@@ -7,7 +7,7 @@ import com.muslimedu.attendance.data.db.entities.StudentEntity
 import com.muslimedu.attendance.data.local.StudentPhotoCache
 import com.muslimedu.attendance.data.repository.FaceTemplateRepository
 import com.muslimedu.attendance.data.repository.StudentRepository
-import com.muslimedu.attendance.data.session.SessionManager
+import com.muslimedu.attendance.data.local.DeviceSettings
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,7 +29,7 @@ class StudentListViewModel @Inject constructor(
     private val studentRepository: StudentRepository,
     private val faceTemplateRepository: FaceTemplateRepository,
     private val photoCache: StudentPhotoCache,
-    private val sessionManager: SessionManager,
+    private val deviceSettings: DeviceSettings,
 ) : ViewModel() {
 
     private val _rows = MutableStateFlow<List<StudentRow>>(emptyList())
@@ -42,11 +42,10 @@ class StudentListViewModel @Inject constructor(
     val addState: StateFlow<AddStudentState> = _addState.asStateFlow()
 
     init {
-        // Reloads on session change - see TeacherDashboardViewModel's init.
-        // StudentRepository.getAll() is scoped to the logged-in account's
-        // school, so this also drops the previous account's students.
+        // Reloads when the device gets linked to a school - getAll() is
+        // scoped to it, and linking moves hand-added students onto it.
         viewModelScope.launch {
-            sessionManager.currentUser.collect { refresh() }
+            deviceSettings.schoolId.collect { refresh() }
         }
     }
 

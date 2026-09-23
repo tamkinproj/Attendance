@@ -15,6 +15,8 @@ import com.muslimedu.attendance.data.remote.dto.GateAttendanceScanData
 import com.muslimedu.attendance.data.remote.dto.GateAttendanceScanRequest
 import com.muslimedu.attendance.data.remote.dto.GateAttendanceTodayData
 import com.muslimedu.attendance.data.remote.dto.GateAttendanceTodayRequest
+import com.muslimedu.attendance.data.remote.dto.GateStudentsData
+import com.muslimedu.attendance.data.remote.dto.GateStudentsRequest
 import com.muslimedu.attendance.data.remote.dto.LoginData
 import com.muslimedu.attendance.data.remote.dto.LoginRequest
 import com.muslimedu.attendance.data.remote.dto.MeData
@@ -97,4 +99,8 @@ interface ApiService {
     /** Every gate scan recorded school-wide for the requested day - the "who's on/off campus" list. */
     @POST("admin_gate_attendance_today")
     suspend fun adminGateAttendanceToday(@Body request: GateAttendanceTodayRequest): ApiEnvelope<GateAttendanceTodayData>
+
+    /** Every active student in the admin's school, with `code` - proposed endpoint, see [GateStudentsRequest]. */
+    @POST("admin_gate_students")
+    suspend fun adminGateStudents(@Body request: GateStudentsRequest): ApiEnvelope<GateStudentsData>
 }
