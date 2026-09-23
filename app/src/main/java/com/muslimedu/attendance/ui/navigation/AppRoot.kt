@@ -46,6 +46,7 @@ import com.muslimedu.attendance.ui.screens.dashboard.TeacherDashboardScreen
 import com.muslimedu.attendance.ui.screens.enrollment.FaceEnrollmentScreen
 import com.muslimedu.attendance.ui.screens.enrollment.PresetFaceTarget
 import com.muslimedu.attendance.ui.screens.enrollment.RfidEnrollmentScreen
+import com.muslimedu.attendance.ui.screens.leave.LeaveScreen
 import com.muslimedu.attendance.ui.screens.profile.ProfileScreen
 import com.muslimedu.attendance.ui.screens.roster.RosterGateScreen
 import com.muslimedu.attendance.ui.screens.scanner.RfidScanScreen
@@ -63,6 +64,7 @@ private enum class Destination(val title: String) {
     Home("Attendance"),
     ScanAttendance("Scan Attendance"),
     ClassRoster("Class Roster"),
+    Leave("Apply for Leave"),
     Profile("Profile"),
     AdminDashboard("Admin Dashboard"),
     SyncStatus("Sync Status"),
@@ -194,6 +196,7 @@ fun AppRoot(authViewModel: AuthViewModel = hiltViewModel()) {
                             onScanAttendance = { destination = Destination.ScanAttendance },
                             onMyClasses = rosterViewModel::loadClasses,
                             onClassRoster = { destination = Destination.ClassRoster },
+                            onApplyLeave = { destination = Destination.Leave },
                         )
                         Destination.ScanAttendance -> RfidScanScreen(
                             isAdmin = isAdmin,
@@ -204,6 +207,10 @@ fun AppRoot(authViewModel: AuthViewModel = hiltViewModel()) {
                             },
                         )
                         Destination.ClassRoster -> ClassRosterScreen(isAdmin = isAdmin)
+                        Destination.Leave -> LeaveScreen(
+                            applicantName = state.user.name,
+                            designation = state.user.role.replaceFirstChar { it.uppercase() },
+                        )
                         Destination.Profile -> ProfileScreen(user = state.user, onLogout = authViewModel::logout)
                         Destination.AdminDashboard -> AdminDashboardScreen(
                             onManageStudents = { destination = Destination.StudentList },
@@ -269,12 +276,14 @@ private fun LoggedInContent(
     onScanAttendance: () -> Unit,
     onMyClasses: () -> Unit,
     onClassRoster: () -> Unit,
+    onApplyLeave: () -> Unit,
 ) {
     when (rosterState) {
         is RosterUiState.Ready -> TeacherDashboardScreen(
             onScanAttendance = onScanAttendance,
             onMyClasses = onMyClasses,
             onClassRoster = onClassRoster,
+            onApplyLeave = onApplyLeave,
         )
         else -> RosterGateScreen(
             state = rosterState,

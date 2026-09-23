@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.EventBusy
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.Card
@@ -55,6 +56,7 @@ fun TeacherDashboardScreen(
     onScanAttendance: () -> Unit,
     onMyClasses: () -> Unit,
     onClassRoster: () -> Unit,
+    onApplyLeave: () -> Unit,
     viewModel: TeacherDashboardViewModel = hiltViewModel(),
 ) {
     val stats by viewModel.stats.collectAsState()
@@ -100,7 +102,10 @@ fun TeacherDashboardScreen(
             StatusCard(readerStatus = readerStatus, isOnline = isOnline, modifier = Modifier.padding(top = 20.dp))
 
             SectionHeader("Quick Actions", modifier = Modifier.padding(top = 24.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 QuickActionCard(
                     icon = Icons.Filled.CreditCard,
                     label = "Scan Attendance",
@@ -115,11 +120,23 @@ fun TeacherDashboardScreen(
                     onClick = onMyClasses,
                     modifier = Modifier.weight(1f),
                 )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 QuickActionCard(
                     icon = Icons.Filled.Groups,
                     label = "Class Roster",
                     color = AccentTeal,
                     onClick = onClassRoster,
+                    modifier = Modifier.weight(1f),
+                )
+                QuickActionCard(
+                    icon = Icons.Filled.EventBusy,
+                    label = "Apply for Leave",
+                    color = AccentRed,
+                    onClick = onApplyLeave,
                     modifier = Modifier.weight(1f),
                 )
             }
