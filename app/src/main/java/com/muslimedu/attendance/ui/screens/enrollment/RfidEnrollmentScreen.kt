@@ -89,7 +89,7 @@ fun RfidEnrollmentScreen(
                             text = "Card UID ${presetUid.uid} ready to assign – pick who it belongs to",
                             color = BrandPurple,
                             style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(horizontal = 24.dp, top = 4.dp),
+                            modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 4.dp),
                         )
                     }
                     StudentPickerContent(
