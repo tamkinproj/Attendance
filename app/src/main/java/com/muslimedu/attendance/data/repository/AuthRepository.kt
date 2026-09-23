@@ -11,27 +11,21 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * This app is built for teachers taking attendance and admins managing the
- * school's roster/sync - not for the backend's many other login-eligible
- * roles (`student`, `parent`, `accountant`, `librarian`, ... - see
- * `ApiController::login()`'s `$allowedRoles` map, which decides who can even
- * authenticate at the platform level and does *not* itself restrict which of
- * those roles belong in *this* app). Without a check here, any of those
- * other roles could log in with valid credentials and land on the RFID scan
- * screen with no real permission model behind them. `superadmin` is allowed
- * alongside `admin` for consistency with [com.muslimedu.attendance.ui.navigation.AppRoot]'s
- * own `ADMIN_ROLES`, which already treats the two the same for who sees the
- * Admin Dashboard - even though, confirmed from the real backend, a
- * superadmin will still get a 403 from the admin-only endpoints that check
- * `role_id === 2` specifically (see `AdminDirectoryRepository`'s doc
- * comment).
+ * The app is gate-only and works offline without any login; signing in is
+ * only needed to upload gate scans and download the student list. Both of
+ * those backend endpoints gate on `requireAdmin()`, which checks
+ * `role_id === 2` specifically - a teacher or even a superadmin gets a 403
+ * from them (confirmed from `ApiController::requireAdmin()`), so letting
+ * those roles sign in here would only produce an account that can't sync.
  */
-private val ALLOWED_APP_ROLES = setOf("teacher", "admin", "superadmin")
+private val ALLOWED_APP_ROLES = setOf("admin")
+private const val WRONG_ROLE_MESSAGE = "Only school admin accounts can sync gate attendance"
 
 @Singleton
 class AuthRepository @Inject constructor(
     private val apiService: ApiService,
     private val tokenManager: TokenManager,
+    private val deviceBinding: DeviceBindingRepository,
 ) {
     fun hasStoredToken(): Boolean = tokenManager.getToken() != null
 
@@ -52,9 +46,13 @@ class AuthRepository @Inject constructor(
             user.role !in ALLOWED_APP_ROLES ->
                 // Never saved - a role this app doesn't support gets no token
                 // written at all, not one saved-then-discarded.
-                Result.failure(Exception("This app is for teachers and admins only"))
+                Result.failure(Exception(WRONG_ROLE_MESSAGE))
+            !deviceBinding.canUse(user.schoolId) ->
+                // Checked before the token is saved, same as the role check.
+                Result.failure(Exception(deviceBinding.mismatchMessage()))
             else -> {
                 tokenManager.saveToken(token)
+                deviceBinding.bindTo(user.schoolId)
                 Result.success(user)
             }
         }
@@ -82,9 +80,18 @@ class AuthRepository @Inject constructor(
                 }
                 user.role !in ALLOWED_APP_ROLES -> {
                     tokenManager.clearToken()
-                    Result.failure(Exception("This app is for teachers and admins only"))
+                    Result.failure(Exception(WRONG_ROLE_MESSAGE))
                 }
-                else -> Result.success(user)
+                !deviceBinding.canUse(user.schoolId) -> {
+                    tokenManager.clearToken()
+                    Result.failure(Exception(deviceBinding.mismatchMessage()))
+                }
+                else -> {
+                    // Covers an install from before offline mode existed: a
+                    // still-valid admin session links the device on startup.
+                    deviceBinding.bindTo(user.schoolId)
+                    Result.success(user)
+                }
             }
         } catch (e: HttpException) {
             if (e.code() == 401) tokenManager.clearToken()

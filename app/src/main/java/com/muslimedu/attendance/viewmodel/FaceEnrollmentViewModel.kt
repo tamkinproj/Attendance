@@ -8,6 +8,7 @@ import com.muslimedu.attendance.data.local.StudentPhotoCache
 import com.muslimedu.attendance.data.repository.FaceEnrollResult
 import com.muslimedu.attendance.data.repository.FaceTemplateRepository
 import com.muslimedu.attendance.data.repository.StudentRepository
+import com.muslimedu.attendance.data.local.DeviceSettings
 import com.muslimedu.attendance.data.session.SessionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,6 +30,7 @@ class FaceEnrollmentViewModel @Inject constructor(
     private val faceTemplateRepository: FaceTemplateRepository,
     private val sessionManager: SessionManager,
     private val photoCache: StudentPhotoCache,
+    private val deviceSettings: DeviceSettings,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<EnrollmentUiState>(EnrollmentUiState.SelectingStudent)
@@ -38,9 +40,9 @@ class FaceEnrollmentViewModel @Inject constructor(
     val students: StateFlow<List<StudentEntity>> = _students.asStateFlow()
 
     init {
-        // Re-read on every session change - see RfidEnrollmentViewModel's init.
+        // Re-read when the device's school changes - see RfidEnrollmentViewModel's init.
         viewModelScope.launch {
-            sessionManager.currentUser.collect {
+            deviceSettings.schoolId.collect {
                 _students.value = studentRepository.getAll()
             }
         }
@@ -58,7 +60,7 @@ class FaceEnrollmentViewModel @Inject constructor(
                 schoolId = state.student.schoolId,
                 studentId = state.student.studentId,
                 bitmap = bitmap,
-                enrolledBy = sessionManager.currentUser.value?.email,
+                enrolledBy = sessionManager.currentUser.value?.email ?: "device",
             )
             _uiState.value = when (result) {
                 is FaceEnrollResult.Success -> EnrollmentUiState.Success(state.student, result.livenessScore)

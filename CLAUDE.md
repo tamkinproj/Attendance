@@ -6,7 +6,87 @@ This is a native Android Kotlin application for recording student attendance usi
 
 **Repository**: `manhajed/Attendance`  
 **Branch**: `claude/new-session-o5rtac`  
-**Status**: Phase 1 - Foundation (scaffolded)
+**Status**: Offline gate-only mode (see below) - classroom attendance moved to the web app
+
+## Offline gate-only mode (current architecture)
+
+The app is now **gate in/out attendance only**, and works **fully offline
+with no login**. Classroom attendance is done on the web app. The old
+classroom screens (teacher dashboard, class scan, class roster, roster
+picker, old admin dashboard, Browse by Class, Leave preview) are **hidden,
+not deleted** - `AppRoot` no longer routes to them, but the code is still in
+the repo if it's ever needed again.
+
+### How the device's data links to the online database
+- **Student -> `code`.** The backend already resolves gate scans by the
+  student's `code` across the whole school, so a gate scan is stored locally
+  as `code + direction + date + time` (`GateScanEntity`, table `gate_scans`)
+  and needs no server student id. RFID card -> student stays device-local
+  (the backend has no RFID field). A student added by hand syncs fine as
+  long as their real school code is used; a wrong code is rejected by the
+  server at upload time and shows up on the Sync screen.
+- **Account -> device school.** Scans belong to the device, not to a login.
+  `DeviceSettings.schoolId` starts unbound (`0`). The first successful admin
+  sign-in links the device to that admin's school (`DeviceBindingRepository`),
+  moving everything recorded before that (students, gate scans, face
+  templates, audit log) onto the real school id in one transaction. After
+  that, sign-in from any other school is refused, so one school's offline
+  scans can never be uploaded into another's.
+- **Subject/class -> not needed.** The backend files gate scans under its
+  `GATE_SUBJECT_ID` sentinel and looks up class/section from enrollment.
+
+### Flow
+- App opens on `GateAttendanceScreen`. Card tap or typed code -> local
+  lookup -> if that student has a face template on this device, the
+  `LiveFaceCaptureView` face check must pass first (no manual override) ->
+  saved to `gate_scans` -> best-effort upload. Same student + same direction
+  within 60s counts as a double tap, not a new event. A typed code not on the
+  device is still recorded (the server validates it on upload).
+- `GateSyncManager` uploads pending scans **oldest first** and stops at the
+  first one that fails for a temporary reason (offline, 5xx, backing off) so
+  a later "out" never reaches the server before its "in". 404/422 -> marked
+  rejected and skipped. 401/403 -> stop, leave pending. Offline is never
+  counted as a failed attempt. Runs after each scan, after sign-in, from the
+  Sync screen, and every 15 min from `SyncWorker`.
+- Admin screens (Students, Assign Card, Enroll Face, Face Settings, Audit
+  Log, Sync & Account, Change PIN) sit behind a **device PIN**
+  (`AdminPinManager`: salted PBKDF2 hash in Keystore-backed encrypted prefs,
+  5 wrong tries -> 60s lockout, counted persistently). They relock when you
+  return to the gate. **Forgot PIN** = a *fresh* admin sign-in (an already
+  open session doesn't count - `AuthViewModel.lastLoginAt`) clears it.
+- Sign-in lives only on the Sync screen and is limited to role `admin`
+  (the gate endpoints' `requireAdmin()` checks `role_id === 2`, so teachers
+  and superadmins would only get 403s).
+- `gate_scans` was added with a real Room migration (`MIGRATION_6_7`), not
+  the destructive fallback - installed devices hold card assignments and
+  face templates that exist nowhere else.
+
+### Backend changes needed (Laravel - not in this repo)
+Neither of these exists yet; the app is built against this proposed
+contract (`GateOfflineContractTest` pins it) and degrades safely until then.
+
+1. **`POST /admin_gate_attendance_scan`: accept an optional `time`**
+   (`date_format:H:i`, same as `check_in_time` elsewhere). The app already
+   sends it with `date`. Today the server stamps its own clock, so a scan
+   made offline at 07:30 and uploaded at 15:00 is recorded as 15:00. When
+   `time` is present, use it for `check_in_time` and the `gate_events`
+   entry; keep `check_in_time` = the earliest "in" by time, and keep
+   `gate_events` sorted by time (several gates may upload out of order).
+   Ignoring an exact duplicate event (same student/date/direction/time)
+   also covers an upload retried after a lost response.
+2. **New `POST /admin_gate_students`** (gated on `requireAdmin()`): every
+   active student in the admin's school with their `code`. No existing
+   endpoint returns that (`admin_section_students` has no `code`; the
+   teacher roster is one class). Response:
+   ```json
+   {"students":[{"student_id":501,"name":"Arjun S","code":"S1001","photo":"https://...","gender":"male","section_id":10,"section_name":"Grade 8B"}]}
+   ```
+   Until it exists, "Download students" shows a clear "not supported yet"
+   message and students can be added by hand in Admin > Students.
+
+**Not verified by a local build** (this sandbox can't resolve the Android
+Gradle Plugin) and not run on a device - check CI and test on real
+hardware, especially the migration on a device that already has v6 data.
 
 ## Development Setup
 

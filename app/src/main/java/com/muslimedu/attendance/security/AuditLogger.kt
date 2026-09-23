@@ -4,6 +4,7 @@ import android.content.Context
 import android.provider.Settings
 import com.muslimedu.attendance.data.db.dao.AuditLogDao
 import com.muslimedu.attendance.data.db.entities.AuditLogEntity
+import com.muslimedu.attendance.data.local.DeviceSettings
 import com.muslimedu.attendance.data.session.SessionManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -13,17 +14,18 @@ import javax.inject.Singleton
  * Records admin-relevant actions (login/logout, attendance recorded, manual
  * overrides, face/RFID enrollment) to the local `audit_logs` table.
  *
- * Every entry needs a `school_id`, taken from [SessionManager]'s current
- * user - a failed login attempt has no session yet, so those aren't logged
- * here (there's no tenant to attach them to). Log a successful login itself
- * *after* the session is populated, and log a logout *before* the session
- * is cleared - callers need to get that ordering right themselves.
+ * Entries are filed under this device's school ([DeviceSettings]), so
+ * admin actions taken offline with nobody logged in (assigning a card,
+ * enrolling a face) are still recorded; they're moved onto the real school
+ * id when the device is first linked. [AuditLogEntity.userId] is the
+ * logged-in admin's email when there is one, else "device".
  */
 @Singleton
 class AuditLogger @Inject constructor(
     @ApplicationContext private val context: Context,
     private val auditLogDao: AuditLogDao,
     private val sessionManager: SessionManager,
+    private val deviceSettings: DeviceSettings,
 ) {
     private val deviceId: String by lazy {
         Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown"
@@ -37,14 +39,13 @@ class AuditLogger @Inject constructor(
         success: Boolean = true,
         errorMessage: String? = null,
     ) {
-        val schoolId = sessionManager.currentUser.value?.schoolId ?: return
         auditLogDao.insert(
             AuditLogEntity(
-                schoolId = schoolId,
+                schoolId = deviceSettings.schoolId.value,
                 action = action,
                 entityType = entityType,
                 entityId = entityId,
-                userId = sessionManager.currentUser.value?.email,
+                userId = sessionManager.currentUser.value?.email ?: "device",
                 details = details,
                 status = if (success) AuditLogEntity.STATUS_SUCCESS else AuditLogEntity.STATUS_FAILURE,
                 errorMessage = errorMessage,

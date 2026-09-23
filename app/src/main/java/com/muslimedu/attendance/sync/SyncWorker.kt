@@ -20,9 +20,13 @@ class SyncWorker @AssistedInject constructor(
     @Assisted context: Context,
     @Assisted params: WorkerParameters,
     private val syncQueueManager: SyncQueueManager,
+    private val gateSyncManager: GateSyncManager,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result = try {
+        gateSyncManager.flush()
+        // Classroom attendance is no longer recorded in the app, but rows
+        // left over from before gate-only mode still get their chance.
         syncQueueManager.flush()
         Result.success()
     } catch (e: Exception) {

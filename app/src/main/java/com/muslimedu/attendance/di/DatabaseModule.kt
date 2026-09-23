@@ -6,6 +6,7 @@ import com.muslimedu.attendance.data.db.AppDatabase
 import com.muslimedu.attendance.data.db.dao.AttendanceDao
 import com.muslimedu.attendance.data.db.dao.AuditLogDao
 import com.muslimedu.attendance.data.db.dao.FaceTemplateDao
+import com.muslimedu.attendance.data.db.dao.GateScanDao
 import com.muslimedu.attendance.data.db.dao.StudentDao
 import dagger.Module
 import dagger.Provides
@@ -22,9 +23,9 @@ object DatabaseModule {
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.DATABASE_NAME)
-            // No real Migration objects yet - the schema is still moving during
-            // early development and there's no installed base to preserve.
-            // Revisit before any real release.
+            .addMigrations(AppDatabase.MIGRATION_6_7)
+            // Still the fallback for installs older than v6, which predate
+            // real migrations - see MIGRATION_6_7 for why v6+ is migrated.
             .fallbackToDestructiveMigration()
             .build()
 
@@ -43,4 +44,8 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideAuditLogDao(database: AppDatabase): AuditLogDao = database.auditLogDao()
+
+    @Provides
+    @Singleton
+    fun provideGateScanDao(database: AppDatabase): GateScanDao = database.gateScanDao()
 }

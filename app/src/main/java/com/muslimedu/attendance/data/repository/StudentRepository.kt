@@ -3,7 +3,7 @@ package com.muslimedu.attendance.data.repository
 import com.muslimedu.attendance.data.db.dao.AttendanceDao
 import com.muslimedu.attendance.data.db.dao.StudentDao
 import com.muslimedu.attendance.data.db.entities.StudentEntity
-import com.muslimedu.attendance.data.session.SessionManager
+import com.muslimedu.attendance.data.local.DeviceSettings
 import com.muslimedu.attendance.security.AuditLogger
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -20,28 +20,22 @@ class StudentRepository @Inject constructor(
     private val studentDao: StudentDao,
     private val attendanceDao: AttendanceDao,
     private val auditLogger: AuditLogger,
-    private val sessionManager: SessionManager,
+    private val deviceSettings: DeviceSettings,
 ) {
     /**
-     * Scan-time lookup, scoped to the logged-in account's school. The local
-     * cache outlives a logout, so a device that's had two accounts on it
-     * holds both schools' students - without this scope, scanning a card
-     * cached under the *previous* account would resolve to that other
-     * school's student and file attendance nobody can sync.
-     *
-     * Returns null when nothing is logged in: there's no school to scan
-     * against, and no screen that scans is reachable logged out anyway.
+     * Scan-time lookup, scoped to this device's school ([DeviceSettings]) -
+     * not the logged-in account's, since the gate works with nobody logged
+     * in. A device that held another school's cache from before offline
+     * mode existed can't resolve that school's cards here.
      */
-    suspend fun findByRfid(rfidUid: String): StudentEntity? {
-        val schoolId = sessionManager.currentUser.value?.schoolId ?: return null
-        return studentDao.findByRfidInSchool(schoolId, rfidUid)
-    }
+    suspend fun findByRfid(rfidUid: String): StudentEntity? =
+        studentDao.findByRfidInSchool(deviceSettings.schoolId.value, rfidUid)
 
-    /** The logged-in account's own roster - see [findByRfid] for why this is school-scoped. */
-    suspend fun getAll(): List<StudentEntity> {
-        val schoolId = sessionManager.currentUser.value?.schoolId ?: return emptyList()
-        return studentDao.getAllForSchool(schoolId)
-    }
+    suspend fun findByCode(code: String): StudentEntity? =
+        studentDao.findByCodeInSchool(deviceSettings.schoolId.value, code)
+
+    /** This device's students - see [findByRfid] for the scoping. */
+    suspend fun getAll(): List<StudentEntity> = studentDao.getAllForSchool(deviceSettings.schoolId.value)
 
     /**
      * Assigns [rfidUid] to [student]. Fails without writing anything if that
@@ -64,16 +58,17 @@ class StudentRepository @Inject constructor(
     }
 
     /**
-     * Adds a student that exists only on this device: there is no backend
-     * endpoint to create a student (only login/roster/attendance exist per
-     * the spec), so this can't be synced. [studentId] is assigned as one
-     * below the lowest id currently in the table, which - since real synced
-     * ids come from the server and are always positive - stays clear of any
-     * id a future roster sync could introduce.
+     * Adds a student by hand on this device. There's no backend endpoint to
+     * create a student, but gate scans sync by `code` alone, so as long as
+     * [code] is the student's real school code their gate scans upload fine
+     * - a wrong code is rejected by the server at sync time (visible on the
+     * Sync screen), never silently. [studentId] is one below the lowest id
+     * in the table: real server ids are always positive, so this can't
+     * collide with one a later student download brings in (that download
+     * matches on code and replaces this id with the real one).
      */
     suspend fun addLocalStudent(name: String, code: String, sectionName: String?): Result<StudentEntity> {
-        val schoolId = sessionManager.currentUser.value?.schoolId
-            ?: return Result.failure(Exception("Not logged in"))
+        val schoolId = deviceSettings.schoolId.value
         if (studentDao.findByCode(code) != null) {
             return Result.failure(Exception("A student with code \"$code\" already exists"))
         }

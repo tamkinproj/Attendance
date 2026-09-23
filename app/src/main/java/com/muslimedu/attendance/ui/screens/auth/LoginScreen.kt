@@ -43,7 +43,10 @@ import com.muslimedu.attendance.ui.theme.BrandPurpleLight
 import com.muslimedu.attendance.viewmodel.AuthViewModel
 
 @Composable
-fun LoginScreen(viewModel: AuthViewModel = hiltViewModel()) {
+fun LoginScreen(
+    subtitle: String = "Sign in with a school admin account",
+    viewModel: AuthViewModel = hiltViewModel(),
+) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     val isLoggingIn by viewModel.isLoggingIn.collectAsState()
@@ -75,13 +78,13 @@ fun LoginScreen(viewModel: AuthViewModel = hiltViewModel()) {
             }
 
             Text(
-                text = "Attendance App",
+                text = "Gate Attendance",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(top = 20.dp),
             )
             Text(
-                text = "Sign in to take attendance",
+                text = subtitle,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp, bottom = 32.dp),
             )

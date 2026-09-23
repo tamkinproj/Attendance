@@ -84,4 +84,10 @@ interface StudentDao {
      */
     @Query("UPDATE students SET is_local_only = 1 WHERE code IN (:codes) AND is_local_only = 0")
     suspend fun markLocalOnlyByCode(codes: List<String>)
+
+    @Query("SELECT * FROM students WHERE school_id = :schoolId AND code = :code AND is_active = 1 LIMIT 1")
+    suspend fun findByCodeInSchool(schoolId: Int, code: String): StudentEntity?
+
+    @Query("UPDATE students SET school_id = :toSchoolId WHERE school_id = :fromSchoolId")
+    suspend fun moveToSchool(fromSchoolId: Int, toSchoolId: Int)
 }

@@ -128,7 +128,7 @@ fun StudentListScreen(
                 EmptyState(
                     icon = Icons.Filled.Person,
                     title = "No students yet",
-                    message = "Sync a roster or add one.",
+                    message = "Download them in Sync & Account, or add one.",
                     modifier = Modifier.padding(top = 32.dp),
                 )
             } else if (filteredRows.isEmpty()) {
@@ -237,8 +237,9 @@ private fun AddStudentDialog(
         text = {
             Column {
                 Text(
-                    "This student is saved on this device only - there is no way to " +
-                        "sync a new student to the school's system yet.",
+                    "Use the student's real school code - their gate scans upload " +
+                        "under this code, and the server rejects a code it doesn't know. " +
+                        "A later student download replaces these details with the server's.",
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(bottom = 12.dp),
                 )
