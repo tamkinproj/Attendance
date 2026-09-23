@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- USB HID class (3) covers keyboard-emulation RFID readers, the common case.
+         Vendor-specific class (255) covers CCID/proprietary readers.
+         Values must be decimal - the platform parser rejects hex. -->
+    <usb-device class="3" />
+    <usb-device class="255" />
+</resources>

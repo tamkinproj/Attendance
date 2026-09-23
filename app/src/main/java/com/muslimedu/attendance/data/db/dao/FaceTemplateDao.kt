@@ -1,0 +1,30 @@
+package com.muslimedu.attendance.data.db.dao
+
+import androidx.room.ColumnInfo
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import com.muslimedu.attendance.data.db.entities.FaceTemplateEntity
+
+/** Just enough of a row to tell which student it belongs to, for a list badge - never the embedding itself. */
+data class FaceTemplateKey(
+    @ColumnInfo(name = "school_id") val schoolId: Int,
+    @ColumnInfo(name = "student_id") val studentId: Int,
+)
+
+@Dao
+interface FaceTemplateDao {
+
+    @Query("SELECT * FROM face_templates WHERE school_id = :schoolId AND student_id = :studentId AND is_active = 1 LIMIT 1")
+    suspend fun findForStudent(schoolId: Int, studentId: Int): FaceTemplateEntity?
+
+    @Query("SELECT COUNT(*) FROM face_templates WHERE school_id = :schoolId AND is_active = 1")
+    suspend fun countActiveForSchool(schoolId: Int): Int
+
+    @Query("SELECT school_id, student_id FROM face_templates WHERE is_active = 1")
+    suspend fun activeKeys(): List<FaceTemplateKey>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(template: FaceTemplateEntity)
+}

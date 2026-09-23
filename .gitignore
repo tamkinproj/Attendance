@@ -1,0 +1,56 @@
+# Gradle files
+.gradle/
+build/
+gradle-app.setting
+
+# Android Studio
+.idea/
+*.iml
+*.iws
+*.ipr
+local.properties
+.DS_Store
+/captures
+.externalNativeBuild
+.cxx/
+
+# IntelliJ
+out/
+*.apk
+*.ap_
+*.dex
+*.class
+
+# Generated files
+bin/
+gen/
+
+# Local configuration files (should not be in version control)
+local.properties
+
+# Kotlin
+kotlin-js-store/
+.kotlin/
+
+# Misc
+*.swp
+*.swo
+*~
+.#*
+
+# Build output
+*.apk
+*.aab
+app/release/
+
+# IDE
+.vscode/
+*.code-workspace
+
+# Logs
+logs/
+*.log
+
+# NPM (if used for any tooling)
+node_modules/
+npm-debug.log

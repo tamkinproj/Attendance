@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Attendance</string>
+    <string name="login_title">Teacher Login</string>
+    <string name="email_hint">Email</string>
+    <string name="password_hint">Password</string>
+    <string name="login_button">Login</string>
+    <string name="scanning">Scanning...</string>
+    <string name="scan_rfid">Scan RFID Card</string>
+    <string name="verify_face">Verify Face</string>
+    <string name="confirm_attendance">Confirm Attendance</string>
+    <string name="sync_status">Sync Status</string>
+    <string name="pending">Pending</string>
+    <string name="synced">Synced</string>
+    <string name="failed">Failed</string>
+    <string name="error">Error</string>
+    <string name="retry">Retry</string>
+    <string name="logout">Logout</string>
+</resources>

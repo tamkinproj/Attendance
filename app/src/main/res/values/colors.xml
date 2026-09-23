@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <!-- Matches ui/theme/Color.kt's BrandPurple/BrandPurpleDark/AccentTeal -
+         kept in sync so the native window (status bar, any frame drawn
+         before Compose takes over) doesn't flash the old template purple. -->
+    <color name="purple_200">#FF8F6BF0</color>
+    <color name="purple_500">#FF6C3CE0</color>
+    <color name="purple_700">#FF4E28B0</color>
+    <color name="teal_200">#FF2EC4B6</color>
+    <color name="teal_700">#FF1F9E93</color>
+    <color name="red">#FFFF0000</color>
+    <color name="green">#FF00AA00</color>
+</resources>
