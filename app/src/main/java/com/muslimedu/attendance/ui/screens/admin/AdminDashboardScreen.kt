@@ -44,10 +44,10 @@ import com.muslimedu.attendance.ui.theme.AccentGold
 import com.muslimedu.attendance.ui.theme.AccentGoldContainer
 import com.muslimedu.attendance.ui.theme.AccentRed
 import com.muslimedu.attendance.ui.theme.AccentRedContainer
-import com.muslimedu.attendance.ui.theme.AccentTeal
-import com.muslimedu.attendance.ui.theme.AccentTealContainer
-import com.muslimedu.attendance.ui.theme.BrandPurple
-import com.muslimedu.attendance.ui.theme.BrandPurpleContainer
+import com.muslimedu.attendance.ui.theme.AccentSuccess
+import com.muslimedu.attendance.ui.theme.AccentSuccessContainer
+import com.muslimedu.attendance.ui.theme.BrandPrimary
+import com.muslimedu.attendance.ui.theme.BrandPrimaryContainer
 import com.muslimedu.attendance.viewmodel.AdminDashboardViewModel
 import com.muslimedu.attendance.viewmodel.AdminStats
 
@@ -97,8 +97,8 @@ fun AdminDashboardScreen(
             SectionHeader("Attendance", modifier = Modifier.padding(top = 24.dp))
             ActionGrid(
                 listOf(
-                    QuickAction(Icons.Filled.QrCodeScanner, "Take Attendance", BrandPurple, onTakeAttendance),
-                    QuickAction(Icons.Filled.Login, "Gate In/Out", AccentTeal, onGateAttendance),
+                    QuickAction(Icons.Filled.QrCodeScanner, "Take Attendance", BrandPrimary, onTakeAttendance),
+                    QuickAction(Icons.Filled.Login, "Gate In/Out", AccentSuccess, onGateAttendance),
                     QuickAction(
                         Icons.Filled.Autorenew,
                         if (isRetrying) "Retrying..." else "Retry Failed Syncs",
@@ -119,19 +119,19 @@ fun AdminDashboardScreen(
                         onSyncRoster,
                         enabled = !isSyncingRoster,
                     ),
-                    QuickAction(Icons.Filled.People, "Student List", BrandPurple, onManageStudents),
-                    QuickAction(Icons.Filled.Groups, "Browse by Class", AccentTeal, onBrowseByClass),
+                    QuickAction(Icons.Filled.People, "Student List", BrandPrimary, onManageStudents),
+                    QuickAction(Icons.Filled.Groups, "Browse by Class", AccentSuccess, onBrowseByClass),
                     QuickAction(Icons.Filled.CreditCard, "Enroll RFID", AccentGold, onEnrollRfid),
-                    QuickAction(Icons.Filled.Face, "Enroll Face", AccentTeal, onEnrollFace),
+                    QuickAction(Icons.Filled.Face, "Enroll Face", AccentSuccess, onEnrollFace),
                 ),
             )
 
             SectionHeader("More", modifier = Modifier.padding(top = 24.dp))
             ActionGrid(
                 listOf(
-                    QuickAction(Icons.Filled.Sync, "Sync Status", BrandPurple, onSyncStatus),
+                    QuickAction(Icons.Filled.Sync, "Sync Status", BrandPrimary, onSyncStatus),
                     QuickAction(Icons.Filled.FileDownload, "Export CSV", AccentGold, onExportAttendance),
-                    QuickAction(Icons.Filled.Settings, "Settings", AccentTeal, onSettings),
+                    QuickAction(Icons.Filled.Settings, "Settings", AccentSuccess, onSettings),
                     QuickAction(Icons.Filled.History, "Audit Log", AccentRed, onAuditLog),
                 ),
             )
@@ -185,8 +185,8 @@ private fun StatsCard(stats: AdminStats, onSyncStatus: () -> Unit) {
     Column(modifier = Modifier.fillMaxWidth().padding(top = 16.dp)) {
         Text("Roster", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(bottom = 8.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatChip(stats.totalStudents, "Students", BrandPurple, BrandPurpleContainer, Modifier.weight(1f))
-            StatChip(stats.studentsWithFace, "Face", AccentTeal, AccentTealContainer, Modifier.weight(1f))
+            StatChip(stats.totalStudents, "Students", BrandPrimary, BrandPrimaryContainer, Modifier.weight(1f))
+            StatChip(stats.studentsWithFace, "Face", AccentSuccess, AccentSuccessContainer, Modifier.weight(1f))
             StatChip(stats.studentsWithRfid, "RFID", AccentGold, AccentGoldContainer, Modifier.weight(1f))
         }
 
@@ -199,7 +199,7 @@ private fun StatsCard(stats: AdminStats, onSyncStatus: () -> Unit) {
             modifier = Modifier.fillMaxWidth().clickable(onClick = onSyncStatus),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            StatChip(stats.syncedToday, "Synced", AccentTeal, AccentTealContainer, Modifier.weight(1f))
+            StatChip(stats.syncedToday, "Synced", AccentSuccess, AccentSuccessContainer, Modifier.weight(1f))
             StatChip(stats.pendingToday, "Pending", AccentGold, AccentGoldContainer, Modifier.weight(1f))
             StatChip(stats.failedToday, "Failed", AccentRed, AccentRedContainer, Modifier.weight(1f))
         }

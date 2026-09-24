@@ -118,7 +118,7 @@ class GateSyncManager @Inject constructor(
         when (e.code()) {
             // Session or account problem, not this scan's: leave it pending
             // untouched and stop - it uploads once a valid admin signs in.
-            401 -> StepResult.Stop("Session expired - sign in again on the Sync screen")
+            401 -> StepResult.Stop("Session expired - sign out and sign in again")
             403 -> StepResult.Stop(message ?: "This account isn't allowed to record gate attendance")
             // No active student with this code in the school, or bad input -
             // retrying can't help, so step past it.

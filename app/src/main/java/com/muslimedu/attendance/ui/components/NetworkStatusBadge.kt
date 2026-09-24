@@ -17,7 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.muslimedu.attendance.ui.theme.AccentGold
-import com.muslimedu.attendance.ui.theme.AccentTeal
+import com.muslimedu.attendance.ui.theme.AccentSuccess
 
 /**
  * Purely informational, shared by [com.muslimedu.attendance.ui.screens.scanner.RfidScanScreen]
@@ -30,7 +30,7 @@ import com.muslimedu.attendance.ui.theme.AccentTeal
 @Composable
 fun NetworkStatusBadge(isOnline: Boolean, modifier: Modifier = Modifier) {
     val label = if (isOnline) "Online - syncing" else "Offline - scans will sync later"
-    val color = if (isOnline) AccentTeal else AccentGold
+    val color = if (isOnline) AccentSuccess else AccentGold
 
     Surface(
         modifier = modifier,

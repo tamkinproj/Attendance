@@ -42,9 +42,9 @@ import com.muslimedu.attendance.ui.theme.AccentGold
 import com.muslimedu.attendance.ui.theme.AccentGoldContainer
 import com.muslimedu.attendance.ui.theme.AccentRed
 import com.muslimedu.attendance.ui.theme.AccentRedContainer
-import com.muslimedu.attendance.ui.theme.AccentTeal
-import com.muslimedu.attendance.ui.theme.AccentTealContainer
-import com.muslimedu.attendance.ui.theme.BrandPurpleContainer
+import com.muslimedu.attendance.ui.theme.AccentSuccess
+import com.muslimedu.attendance.ui.theme.AccentSuccessContainer
+import com.muslimedu.attendance.ui.theme.BrandPrimaryContainer
 import com.muslimedu.attendance.ui.theme.TextPrimary
 import com.muslimedu.attendance.viewmodel.RfidViewModel
 import com.muslimedu.attendance.viewmodel.ScanUiState
@@ -143,7 +143,7 @@ private fun MatchedStudentCard(student: StudentEntity, uid: String, onDismiss: (
     }
 
     Card(
-        colors = CardDefaults.cardColors(containerColor = AccentTealContainer),
+        colors = CardDefaults.cardColors(containerColor = AccentSuccessContainer),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
@@ -154,7 +154,7 @@ private fun MatchedStudentCard(student: StudentEntity, uid: String, onDismiss: (
                 imageVector = Icons.Filled.Person,
                 contentDescription = null,
                 modifier = Modifier.size(64.dp),
-                tint = AccentTeal,
+                tint = AccentSuccess,
             )
             Text(student.name, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 8.dp))
             Text(student.code)
@@ -162,7 +162,7 @@ private fun MatchedStudentCard(student: StudentEntity, uid: String, onDismiss: (
             Text(text = "UID: $uid", modifier = Modifier.padding(top = 8.dp))
             Text(
                 text = "Present - recorded",
-                color = AccentTeal,
+                color = AccentSuccess,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.padding(top = 4.dp),
             )
@@ -213,7 +213,7 @@ private fun FaceVerificationCard(
 ) {
     Card(
         colors = CardDefaults.cardColors(
-            containerColor = if (failureReason != null) AccentRedContainer else BrandPurpleContainer,
+            containerColor = if (failureReason != null) AccentRedContainer else BrandPrimaryContainer,
         ),
         modifier = Modifier.fillMaxWidth(),
     ) {

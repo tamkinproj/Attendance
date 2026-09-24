@@ -10,7 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.muslimedu.attendance.ui.theme.BrandPurple
+import com.muslimedu.attendance.ui.theme.BrandPrimary
 
 /**
  * A simple "1. Select Student · 2. Tap Card · 3. Confirm"-style progress
@@ -31,7 +31,7 @@ fun StepIndicator(steps: List<String>, currentStep: Int, modifier: Modifier = Mo
                 text = "$stepNumber. $label",
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
-                color = if (isActive || isDone) BrandPurple else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (isActive || isDone) BrandPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(end = 4.dp),
             )
             if (stepNumber != steps.size) {

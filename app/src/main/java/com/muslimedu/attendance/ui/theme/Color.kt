@@ -3,41 +3,55 @@ package com.muslimedu.attendance.ui.theme
 import androidx.compose.ui.graphics.Color
 
 /**
- * Brand palette matching the reference UI mockup the user supplied: a
- * white/light-card look on a deep violet-purple brand color, with gold,
- * teal, and red used consistently as status accents (present/pending,
- * warning/late, and error/absent respectively) across every screen -
- * attendance badges, sync status, gate direction chips, stat cards.
+ * Brand palette taken from the app logo: a single mid teal ([BrandTeal],
+ * the logo's exact #369A8E) on a pale mint ground.
+ *
+ * The logo teal only reaches ~3.4:1 against white, too low for button
+ * labels and body text, so interactive/text color is [BrandPrimary] - the
+ * same hue darkened to 5.1:1. [BrandTeal] is for the logo itself, gradients,
+ * large icons and decoration. Status accents are chosen to stay readable as
+ * text on white (>= 4.5:1) and to be told apart from the teal: amber for
+ * "out"/warnings, coral red for errors, slate for neutral info. "In"/success
+ * uses the brand teal itself.
  */
-val BrandPurple = Color(0xFF6C3CE0)
-val BrandPurpleDark = Color(0xFF4E28B0)
-val BrandPurpleLight = Color(0xFF8F6BF0)
-val BrandPurpleContainer = Color(0xFFEDE6FB)
+val BrandTeal = Color(0xFF369A8E)
+val BrandPrimary = Color(0xFF267A70)
+val BrandPrimaryDark = Color(0xFF1B5A53)
+val BrandPrimaryLight = Color(0xFF5DB8AB)
+val BrandPrimaryContainer = Color(0xFFD3ECE7)
 
-val AccentGold = Color(0xFFF2A93B)
-val AccentGoldContainer = Color(0xFFFCE9CC)
+val AccentSuccess = BrandPrimary
+val AccentSuccessContainer = BrandPrimaryContainer
 
-val AccentTeal = Color(0xFF2EC4B6)
-val AccentTealContainer = Color(0xFFDBF5F2)
+val AccentGold = Color(0xFFA36A0E)
+val AccentGoldContainer = Color(0xFFFBEBD0)
 
-val AccentRed = Color(0xFFEF5350)
-val AccentRedContainer = Color(0xFFFBE0DF)
+val AccentRed = Color(0xFFC2453D)
+val AccentRedContainer = Color(0xFFFBE1DE)
 
-/** The face-detection scan frame's border color in the reference mockup - a brighter, more saturated green than [AccentTeal]'s status-badge use. */
-val ScanFrameGreen = Color(0xFF34D399)
+val AccentSlate = Color(0xFF3D6680)
+val AccentSlateContainer = Color(0xFFDCE8F0)
+
+/** The face-capture frame's border - brighter than [BrandPrimary] so it stands out over a live camera feed. */
+val ScanFrameGreen = Color(0xFF3FD0B5)
 
 val SurfaceLight = Color(0xFFFFFFFF)
-val BackgroundLight = Color(0xFFF7F6FB)
-val TextPrimary = Color(0xFF1F1B2E)
-val TextSecondary = Color(0xFF8E8A9B)
-val OutlineLight = Color(0xFFE7E3F2)
+val BackgroundLight = Color(0xFFEEF6F4)
+val SurfaceVariantLight = Color(0xFFE2F0EC)
+val TextPrimary = Color(0xFF14302C)
+val TextSecondary = Color(0xFF5C7571)
+val OutlineLight = Color(0xFFCFE3DE)
 
-// Legacy Compose-template values - still referenced by DarkColorScheme in
-// Theme.kt for the system-dark-mode fallback.
-val Purple80 = Color(0xFFD0BCFF)
-val PurpleGrey80 = Color(0xFFCCC2DC)
-val Pink80 = Color(0xFFEFB8C8)
+// Dark scheme: the same teal lifted for contrast on a deep teal-black ground.
+val BrandPrimaryOnDark = Color(0xFF7FD3C6)
+val BrandPrimaryContainerDark = Color(0xFF1D4A44)
+val BackgroundDark = Color(0xFF0E1A18)
+val SurfaceDark = Color(0xFF15231F)
+val SurfaceVariantDark = Color(0xFF1F302C)
+val TextPrimaryDark = Color(0xFFE0EEEA)
+val TextSecondaryDark = Color(0xFF9DB7B1)
+val OutlineDark = Color(0xFF3A524D)
 
-val Success = AccentTeal
+val Success = AccentSuccess
 val Error = AccentRed
 val Warning = AccentGold

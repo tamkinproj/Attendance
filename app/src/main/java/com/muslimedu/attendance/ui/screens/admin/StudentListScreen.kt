@@ -51,7 +51,7 @@ import com.muslimedu.attendance.data.db.entities.StudentEntity
 import com.muslimedu.attendance.ui.components.EmptyState
 import com.muslimedu.attendance.ui.theme.AccentGold
 import com.muslimedu.attendance.ui.theme.AccentRed
-import com.muslimedu.attendance.ui.theme.AccentTeal
+import com.muslimedu.attendance.ui.theme.AccentSuccess
 import com.muslimedu.attendance.viewmodel.StudentListViewModel
 import com.muslimedu.attendance.viewmodel.StudentRow
 
@@ -206,14 +206,14 @@ private fun StudentListRow(
                 Icon(
                     Icons.Filled.CreditCard,
                     contentDescription = if (hasCard) "Re-assign RFID card" else "Assign RFID card",
-                    tint = if (hasCard) AccentTeal else MaterialTheme.colorScheme.outline,
+                    tint = if (hasCard) AccentSuccess else MaterialTheme.colorScheme.outline,
                 )
             }
             IconButton(onClick = onRegisterFace) {
                 Icon(
                     Icons.Filled.Face,
                     contentDescription = if (row.hasFace) "Re-register face" else "Register face",
-                    tint = if (row.hasFace) AccentTeal else MaterialTheme.colorScheme.outline,
+                    tint = if (row.hasFace) AccentSuccess else MaterialTheme.colorScheme.outline,
                 )
             }
         }

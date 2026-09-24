@@ -11,15 +11,13 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * The app is gate-only and works offline without any login; signing in is
- * only needed to upload gate scans and download the student list. Both of
- * those backend endpoints gate on `requireAdmin()`, which checks
- * `role_id === 2` specifically - a teacher or even a superadmin gets a 403
- * from them (confirmed from `ApiController::requireAdmin()`), so letting
- * those roles sign in here would only produce an account that can't sync.
+ * Gate-only app for school admins: students, teachers and every other role
+ * use the web app. The gate endpoints also gate on `requireAdmin()`, which
+ * checks `role_id === 2` specifically - a teacher or even a superadmin gets
+ * a 403 from them (confirmed from `ApiController::requireAdmin()`).
  */
 private val ALLOWED_APP_ROLES = setOf("admin")
-private const val WRONG_ROLE_MESSAGE = "Only school admin accounts can sync gate attendance"
+private const val WRONG_ROLE_MESSAGE = "Only school admin accounts can sign in to this app"
 
 @Singleton
 class AuthRepository @Inject constructor(
@@ -28,6 +26,9 @@ class AuthRepository @Inject constructor(
     private val deviceBinding: DeviceBindingRepository,
 ) {
     fun hasStoredToken(): Boolean = tokenManager.getToken() != null
+
+    /** The last admin profile seen from the server - lets the app open offline without waiting on `/me`. */
+    fun cachedUser(): UserDto? = tokenManager.getCachedUser()
 
     suspend fun login(email: String, password: String): Result<UserDto> = try {
         val response = apiService.login(LoginRequest(email, password))
@@ -52,6 +53,7 @@ class AuthRepository @Inject constructor(
                 Result.failure(Exception(deviceBinding.mismatchMessage()))
             else -> {
                 tokenManager.saveToken(token)
+                tokenManager.saveUser(user)
                 deviceBinding.bindTo(user.schoolId)
                 Result.success(user)
             }
@@ -90,6 +92,7 @@ class AuthRepository @Inject constructor(
                     // Covers an install from before offline mode existed: a
                     // still-valid admin session links the device on startup.
                     deviceBinding.bindTo(user.schoolId)
+                    tokenManager.saveUser(user)
                     Result.success(user)
                 }
             }

@@ -39,9 +39,9 @@ import com.muslimedu.attendance.ui.components.QuickActionCard
 import com.muslimedu.attendance.ui.components.SectionHeader
 import com.muslimedu.attendance.ui.theme.AccentGold
 import com.muslimedu.attendance.ui.theme.AccentRed
-import com.muslimedu.attendance.ui.theme.AccentTeal
-import com.muslimedu.attendance.ui.theme.BrandPurple
-import com.muslimedu.attendance.ui.theme.BrandPurpleLight
+import com.muslimedu.attendance.ui.theme.AccentSuccess
+import com.muslimedu.attendance.ui.theme.BrandPrimary
+import com.muslimedu.attendance.ui.theme.BrandPrimaryLight
 import com.muslimedu.attendance.viewmodel.TeacherDashboardStats
 import com.muslimedu.attendance.viewmodel.TeacherDashboardViewModel
 
@@ -109,7 +109,7 @@ fun TeacherDashboardScreen(
                 QuickActionCard(
                     icon = Icons.Filled.CreditCard,
                     label = "Scan Attendance",
-                    color = BrandPurple,
+                    color = BrandPrimary,
                     onClick = onScanAttendance,
                     modifier = Modifier.weight(1f),
                 )
@@ -128,7 +128,7 @@ fun TeacherDashboardScreen(
                 QuickActionCard(
                     icon = Icons.Filled.Groups,
                     label = "Class Roster",
-                    color = AccentTeal,
+                    color = AccentSuccess,
                     onClick = onClassRoster,
                     modifier = Modifier.weight(1f),
                 )
@@ -151,7 +151,7 @@ private fun AttendanceSummaryCard(stats: TeacherDashboardStats) {
         modifier = Modifier
             .fillMaxWidth()
             .background(
-                brush = Brush.linearGradient(listOf(BrandPurple, BrandPurpleLight)),
+                brush = Brush.linearGradient(listOf(BrandPrimary, BrandPrimaryLight)),
                 shape = MaterialTheme.shapes.large,
             )
             .padding(20.dp),
@@ -195,7 +195,7 @@ private fun HeroStatChip(value: Int, label: String, modifier: Modifier = Modifie
 @Composable
 private fun StatusCard(readerStatus: ReaderStatus, isOnline: Boolean, modifier: Modifier = Modifier) {
     val readerColor = when {
-        readerStatus.connected -> AccentTeal
+        readerStatus.connected -> AccentSuccess
         readerStatus.canSimulate -> AccentGold
         else -> AccentRed
     }
@@ -204,7 +204,7 @@ private fun StatusCard(readerStatus: ReaderStatus, isOnline: Boolean, modifier: 
         readerStatus.canSimulate -> "No reader - use Simulate Scan"
         else -> "No reader detected"
     }
-    val networkColor = if (isOnline) AccentTeal else AccentGold
+    val networkColor = if (isOnline) AccentSuccess else AccentGold
     val networkLabel = if (isOnline) "Online - syncing" else "Offline - scans will sync later"
 
     Card(modifier = modifier.fillMaxWidth(), colors = CardDefaults.cardColors()) {

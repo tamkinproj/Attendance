@@ -34,7 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import com.muslimedu.attendance.ui.theme.AccentGold
 import com.muslimedu.attendance.ui.theme.AccentRed
-import com.muslimedu.attendance.ui.theme.AccentTeal
+import com.muslimedu.attendance.ui.theme.AccentSuccess
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -242,13 +242,13 @@ private fun StudentsContent(
                         Icon(
                             Icons.Filled.CreditCard,
                             contentDescription = null,
-                            tint = if (row.localEntity?.rfidCardNumber != null) AccentTeal else MaterialTheme.colorScheme.outline,
+                            tint = if (row.localEntity?.rfidCardNumber != null) AccentSuccess else MaterialTheme.colorScheme.outline,
                         )
                         Icon(
                             Icons.Filled.Face,
                             contentDescription = null,
                             modifier = Modifier.padding(start = 8.dp),
-                            tint = if (row.hasFaceTemplate) AccentTeal else MaterialTheme.colorScheme.outline,
+                            tint = if (row.hasFaceTemplate) AccentSuccess else MaterialTheme.colorScheme.outline,
                         )
                     }
                 }

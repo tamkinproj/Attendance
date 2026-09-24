@@ -36,6 +36,19 @@ class DeviceSettings @Inject constructor(
         _schoolId.value = schoolId
     }
 
+    /**
+     * True from a fresh admin sign-in until the sync step after it finishes
+     * (or is skipped). Persisted, so an app killed mid-sync resumes on the
+     * sync step instead of skipping straight to the gate.
+     */
+    private val _postLoginSyncPending = MutableStateFlow(prefs.getBoolean(KEY_POST_LOGIN_SYNC, false))
+    val postLoginSyncPending: StateFlow<Boolean> = _postLoginSyncPending.asStateFlow()
+
+    fun setPostLoginSyncPending(pending: Boolean) {
+        prefs.edit().putBoolean(KEY_POST_LOGIN_SYNC, pending).apply()
+        _postLoginSyncPending.value = pending
+    }
+
     var lastStudentDownloadAt: Long?
         get() = prefs.getLong(KEY_LAST_STUDENT_DOWNLOAD, 0L).takeIf { it > 0L }
         set(value) {
@@ -47,5 +60,6 @@ class DeviceSettings @Inject constructor(
         private const val PREFS_FILE_NAME = "device_settings"
         private const val KEY_SCHOOL_ID = "school_id"
         private const val KEY_LAST_STUDENT_DOWNLOAD = "last_student_download_at"
+        private const val KEY_POST_LOGIN_SYNC = "post_login_sync_pending"
     }
 }

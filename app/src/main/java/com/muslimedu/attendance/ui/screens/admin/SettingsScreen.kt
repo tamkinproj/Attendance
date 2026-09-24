@@ -23,7 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.muslimedu.attendance.ui.components.SectionHeader
-import com.muslimedu.attendance.ui.theme.AccentTeal
+import com.muslimedu.attendance.ui.theme.AccentSuccess
 import com.muslimedu.attendance.viewmodel.SettingsViewModel
 
 @Composable
@@ -37,7 +37,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Filled.Face, contentDescription = null, tint = AccentTeal)
+                        Icon(Icons.Filled.Face, contentDescription = null, tint = AccentSuccess)
                         Text(
                             "Match threshold",
                             style = MaterialTheme.typography.titleMedium,
