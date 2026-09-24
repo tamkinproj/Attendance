@@ -50,8 +50,8 @@ import com.google.mlkit.vision.face.FaceDetector
 import com.google.mlkit.vision.face.FaceDetectorOptions
 import com.muslimedu.attendance.face.LivenessDetector
 import com.muslimedu.attendance.face.toUprightBitmap
-import com.muslimedu.attendance.ui.theme.BrandPurple
-import com.muslimedu.attendance.ui.theme.BrandPurpleContainer
+import com.muslimedu.attendance.ui.theme.BrandPrimary
+import com.muslimedu.attendance.ui.theme.BrandPrimaryContainer
 import com.muslimedu.attendance.ui.theme.ScanFrameGreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -276,8 +276,8 @@ fun LiveFaceCaptureView(
         )
         LinearProgressIndicator(
             progress = { progressFraction },
-            color = BrandPurple,
-            trackColor = BrandPurpleContainer,
+            color = BrandPrimary,
+            trackColor = BrandPrimaryContainer,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 12.dp)

@@ -19,7 +19,7 @@ import androidx.compose.ui.unit.dp
 import com.muslimedu.attendance.rfid.ReaderStatus
 import com.muslimedu.attendance.ui.theme.AccentGold
 import com.muslimedu.attendance.ui.theme.AccentRed
-import com.muslimedu.attendance.ui.theme.AccentTeal
+import com.muslimedu.attendance.ui.theme.AccentSuccess
 
 /**
  * Shows whether a reader is physically plugged in, naming the device so it's
@@ -37,7 +37,7 @@ fun ReaderStatusBadge(status: ReaderStatus, modifier: Modifier = Modifier) {
         else -> "No reader detected - plug in a USB reader"
     }
     val color = when {
-        status.connected -> AccentTeal
+        status.connected -> AccentSuccess
         status.canSimulate -> AccentGold
         else -> AccentRed
     }

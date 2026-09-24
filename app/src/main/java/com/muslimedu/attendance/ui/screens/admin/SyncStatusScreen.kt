@@ -36,8 +36,8 @@ import com.muslimedu.attendance.ui.theme.AccentGold
 import com.muslimedu.attendance.ui.theme.AccentGoldContainer
 import com.muslimedu.attendance.ui.theme.AccentRed
 import com.muslimedu.attendance.ui.theme.AccentRedContainer
-import com.muslimedu.attendance.ui.theme.AccentTeal
-import com.muslimedu.attendance.ui.theme.AccentTealContainer
+import com.muslimedu.attendance.ui.theme.AccentSuccess
+import com.muslimedu.attendance.ui.theme.AccentSuccessContainer
 import com.muslimedu.attendance.viewmodel.FailedRecord
 import com.muslimedu.attendance.viewmodel.SyncStatusViewModel
 
@@ -61,7 +61,7 @@ fun SyncStatusScreen(viewModel: SyncStatusViewModel = hiltViewModel()) {
                 null -> CircularProgressIndicator()
                 else -> {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        StatChip(current.syncedToday, "Synced", AccentTeal, AccentTealContainer, Modifier.weight(1f))
+                        StatChip(current.syncedToday, "Synced", AccentSuccess, AccentSuccessContainer, Modifier.weight(1f))
                         StatChip(current.pendingToday, "Pending", AccentGold, AccentGoldContainer, Modifier.weight(1f))
                         StatChip(current.failedToday, "Failed", AccentRed, AccentRedContainer, Modifier.weight(1f))
                     }

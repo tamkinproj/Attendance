@@ -1,11 +1,14 @@
 package com.muslimedu.attendance.ui.screens.admin
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
@@ -32,7 +35,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.muslimedu.attendance.ui.theme.AccentRed
-import com.muslimedu.attendance.ui.theme.BrandPurple
+import com.muslimedu.attendance.ui.theme.BrandPrimary
+import com.muslimedu.attendance.ui.theme.BrandPrimaryContainer
 import com.muslimedu.attendance.viewmodel.AdminPinViewModel
 
 /**
@@ -63,13 +67,18 @@ fun AdminPinScreen(
         }
     }
 
-    Surface(modifier = Modifier.fillMaxSize()) {
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
             modifier = Modifier.fillMaxSize().padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Icon(Icons.Filled.Lock, contentDescription = null, tint = BrandPurple, modifier = Modifier.size(48.dp))
+            Box(
+                modifier = Modifier.size(88.dp).background(BrandPrimaryContainer, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.Lock, contentDescription = null, tint = BrandPrimary, modifier = Modifier.size(40.dp))
+            }
             Text(
                 if (state.isCreating) "Create an admin PIN" else "Enter admin PIN",
                 style = MaterialTheme.typography.titleLarge,

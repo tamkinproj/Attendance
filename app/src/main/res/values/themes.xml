@@ -1,11 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- NoActionBar: the UI is Compose and draws its own TopAppBar. With an
-         action-bar theme the framework drew a second, purple "Attendance" bar
-         on top of it, which clipped the Compose one underneath. -->
+         action-bar theme the framework drew a second bar on top of it, which
+         clipped the Compose one underneath. -->
     <style name="Theme.MuslimEduAttendance" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:colorPrimary">@color/purple_500</item>
-        <item name="android:colorPrimaryDark">@color/purple_700</item>
-        <item name="android:colorAccent">@color/teal_200</item>
+        <item name="android:colorPrimary">@color/brand_primary</item>
+        <item name="android:colorPrimaryDark">@color/brand_primary_dark</item>
+        <item name="android:colorAccent">@color/brand_teal</item>
+        <item name="android:windowBackground">@color/brand_background</item>
+        <item name="android:statusBarColor">@color/brand_background</item>
+        <item name="android:navigationBarColor">@color/brand_background</item>
+        <item name="android:windowLightStatusBar">true</item>
     </style>
 </resources>

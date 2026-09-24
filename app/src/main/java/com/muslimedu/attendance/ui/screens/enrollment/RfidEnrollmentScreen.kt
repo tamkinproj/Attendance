@@ -40,8 +40,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.muslimedu.attendance.data.db.entities.StudentEntity
 import com.muslimedu.attendance.ui.components.StepIndicator
 import com.muslimedu.attendance.ui.theme.AccentRed
-import com.muslimedu.attendance.ui.theme.AccentTeal
-import com.muslimedu.attendance.ui.theme.BrandPurple
+import com.muslimedu.attendance.ui.theme.AccentSuccess
+import com.muslimedu.attendance.ui.theme.BrandPrimary
 import com.muslimedu.attendance.viewmodel.PresetRfidTarget
 import com.muslimedu.attendance.viewmodel.PresetRfidUid
 import com.muslimedu.attendance.viewmodel.RfidEnrollmentUiState
@@ -87,7 +87,7 @@ fun RfidEnrollmentScreen(
                     if (presetUid != null) {
                         Text(
                             text = "Card UID ${presetUid.uid} ready to assign – pick who it belongs to",
-                            color = BrandPurple,
+                            color = BrandPrimary,
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 4.dp),
                         )
@@ -241,7 +241,7 @@ internal fun ResultContent(
         verticalArrangement = Arrangement.Center,
     ) {
         Text(title, style = MaterialTheme.typography.titleLarge)
-        Text(text = message, color = if (isError) AccentRed else AccentTeal)
+        Text(text = message, color = if (isError) AccentRed else AccentSuccess)
         Button(onClick = onDone, modifier = Modifier.padding(top = 24.dp)) {
             Text(buttonLabel)
         }

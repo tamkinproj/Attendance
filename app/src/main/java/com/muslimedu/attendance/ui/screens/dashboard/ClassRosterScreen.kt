@@ -40,8 +40,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.muslimedu.attendance.ui.components.EmptyState
 import com.muslimedu.attendance.ui.components.StatusPill
 import com.muslimedu.attendance.ui.theme.AccentGold
-import com.muslimedu.attendance.ui.theme.AccentTeal
-import com.muslimedu.attendance.ui.theme.BrandPurple
+import com.muslimedu.attendance.ui.theme.AccentSuccess
+import com.muslimedu.attendance.ui.theme.BrandPrimary
 import com.muslimedu.attendance.viewmodel.ClassRosterViewModel
 import com.muslimedu.attendance.viewmodel.RosterRow
 
@@ -131,7 +131,7 @@ private fun RosterRowCard(
                 Text(row.student.code, style = MaterialTheme.typography.bodySmall)
             }
             if (row.checkInTime != null) {
-                StatusPill(label = "Present · ${row.checkInTime}", color = AccentTeal)
+                StatusPill(label = "Present · ${row.checkInTime}", color = AccentSuccess)
             } else {
                 Column(horizontalAlignment = Alignment.End) {
                     StatusPill(label = "Not scanned", color = AccentGold)
@@ -139,7 +139,7 @@ private fun RosterRowCard(
                         Text(
                             text = "Mark Present",
                             style = MaterialTheme.typography.labelSmall,
-                            color = BrandPurple,
+                            color = BrandPrimary,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier
                                 .padding(top = 4.dp)

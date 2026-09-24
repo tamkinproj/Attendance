@@ -37,8 +37,8 @@ import com.muslimedu.attendance.security.AuditLogger
 import com.muslimedu.attendance.ui.components.EmptyState
 import com.muslimedu.attendance.ui.theme.AccentGold
 import com.muslimedu.attendance.ui.theme.AccentRed
-import com.muslimedu.attendance.ui.theme.AccentTeal
-import com.muslimedu.attendance.ui.theme.BrandPurple
+import com.muslimedu.attendance.ui.theme.AccentSuccess
+import com.muslimedu.attendance.ui.theme.BrandPrimary
 import com.muslimedu.attendance.ui.theme.TextSecondary
 import com.muslimedu.attendance.viewmodel.AuditLogViewModel
 import androidx.compose.ui.graphics.Color
@@ -122,13 +122,13 @@ private fun AuditLogRow(entry: AuditLogEntity) {
 }
 
 private fun actionIcon(action: String): Pair<ImageVector, Color> = when (action) {
-    AuditLogger.ACTION_LOGIN -> Icons.Filled.Login to AccentTeal
+    AuditLogger.ACTION_LOGIN -> Icons.Filled.Login to AccentSuccess
     AuditLogger.ACTION_LOGOUT -> Icons.Filled.Logout to AccentGold
-    AuditLogger.ACTION_ATTENDANCE_RECORDED -> Icons.Filled.QrCodeScanner to BrandPurple
+    AuditLogger.ACTION_ATTENDANCE_RECORDED -> Icons.Filled.QrCodeScanner to BrandPrimary
     AuditLogger.ACTION_MANUAL_OVERRIDE -> Icons.Filled.Warning to AccentGold
-    AuditLogger.ACTION_FACE_ENROLLED -> Icons.Filled.Face to AccentTeal
-    AuditLogger.ACTION_RFID_ASSIGNED -> Icons.Filled.CreditCard to AccentTeal
-    AuditLogger.ACTION_STUDENT_ADDED -> Icons.Filled.PersonAdd to BrandPurple
+    AuditLogger.ACTION_FACE_ENROLLED -> Icons.Filled.Face to AccentSuccess
+    AuditLogger.ACTION_RFID_ASSIGNED -> Icons.Filled.CreditCard to AccentSuccess
+    AuditLogger.ACTION_STUDENT_ADDED -> Icons.Filled.PersonAdd to BrandPrimary
     else -> Icons.Filled.History to TextSecondary
 }
 

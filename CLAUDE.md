@@ -6,12 +6,26 @@ This is a native Android Kotlin application for recording student attendance usi
 
 **Repository**: `manhajed/Attendance`  
 **Branch**: `claude/new-session-o5rtac`  
-**Status**: Offline gate-only mode (see below) - classroom attendance moved to the web app
+**Status**: Gate-only, admin-sign-in-first, offline-capable (see below) - classroom attendance moved to the web app
 
 ## Offline gate-only mode (current architecture)
 
-The app is now **gate in/out attendance only**, and works **fully offline
-with no login**. Classroom attendance is done on the web app. The old
+The app is **gate in/out attendance only**. Classroom attendance is done on
+the web app.
+
+**Entry flow (current): admin sign-in -> sync -> gate.** Nothing works until
+a school admin (role `admin` only - no teachers, students or other roles)
+signs in. Each fresh sign-in is followed by `InitialSyncScreen` (upload this
+device's pending scans, then download the student list; the admin can retry
+or continue if a step fails). After that the session is remembered: the
+admin profile is cached with the token (`TokenManager`), so the app opens
+straight to the gate **offline and across restarts**, and `/me` re-checks it
+in the background - only an explicit server rejection signs the device out,
+never a missing network. Signing out (Sync & Account, with a confirm that
+warns about un-uploaded scans) returns to the sign-in screen.
+`DeviceSettings.postLoginSyncPending` is persisted so an app killed mid-sync
+resumes on the sync step. (An earlier iteration opened on the gate with no
+sign-in at all; the user asked for sign-in first instead.) The old
 classroom screens (teacher dashboard, class scan, class roster, roster
 picker, old admin dashboard, Browse by Class, Leave preview) are **hidden,
 not deleted** - `AppRoot` no longer routes to them, but the code is still in
@@ -54,9 +68,10 @@ the repo if it's ever needed again.
   5 wrong tries -> 60s lockout, counted persistently). They relock when you
   return to the gate. **Forgot PIN** = a *fresh* admin sign-in (an already
   open session doesn't count - `AuthViewModel.lastLoginAt`) clears it.
-- Sign-in lives only on the Sync screen and is limited to role `admin`
-  (the gate endpoints' `requireAdmin()` checks `role_id === 2`, so teachers
-  and superadmins would only get 403s).
+- Sign-in is limited to role `admin` (the gate endpoints' `requireAdmin()`
+  checks `role_id === 2`, so teachers and superadmins would only get 403s).
+  The only in-app sign-in after that is the "forgot PIN" re-authentication,
+  which skips the sync step.
 - `gate_scans` was added with a real Room migration (`MIGRATION_6_7`), not
   the destructive fallback - installed devices hold card assignments and
   face templates that exist nowhere else.
@@ -87,6 +102,25 @@ contract (`GateOfflineContractTest` pins it) and degrades safely until then.
 **Not verified by a local build** (this sandbox can't resolve the Android
 Gradle Plugin) and not run on a device - check CI and test on real
 hardware, especially the migration on a device that already has v6 data.
+
+### Brand theme (from the logo)
+- Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
+  teal - used for the logo, gradients, big icons. It's only ~3.4:1 on white,
+  so buttons/text use `BrandPrimary` #267A70 (same hue, 5.1:1). Background is
+  mint #EEF6F4. Status accents are readable as text on white: amber
+  `AccentGold` (Out/warnings), coral `AccentRed` (errors), `AccentSlate`
+  (info); In/success is the brand teal (`AccentSuccess`).
+- Tokens were renamed semantically (`BrandPurple*` -> `BrandPrimary*`,
+  `AccentTeal*` -> `AccentSuccess*`); hidden classroom screens use the same
+  tokens so they follow the theme too.
+- `Theme.kt` sets the `surfaceContainer*` roles explicitly - Material3 1.2
+  draws cards/dialogs/menus from them and otherwise falls back to the
+  baseline lavender-grey. A real teal dark scheme replaced the template one.
+  No dynamic (wallpaper) color.
+- Launcher icon and `drawable-nodpi/brand_logo.png` are cut from the logo
+  image the user supplied (teal mark on transparent, centred in the
+  adaptive-icon safe zone); the previous icon had a leftover background
+  smudge and an off-centre mark. App label is now "Gate Attendance".
 
 ## Development Setup
 

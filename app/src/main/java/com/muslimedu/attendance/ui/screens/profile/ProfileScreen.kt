@@ -27,8 +27,8 @@ import androidx.compose.ui.unit.dp
 import com.muslimedu.attendance.data.remote.dto.UserDto
 import com.muslimedu.attendance.ui.components.SectionHeader
 import com.muslimedu.attendance.ui.theme.AccentRed
-import com.muslimedu.attendance.ui.theme.BrandPurple
-import com.muslimedu.attendance.ui.theme.BrandPurpleContainer
+import com.muslimedu.attendance.ui.theme.BrandPrimary
+import com.muslimedu.attendance.ui.theme.BrandPrimaryContainer
 
 /**
  * The account behind the already-real logout action, surfaced as its own
@@ -47,12 +47,12 @@ fun ProfileScreen(user: UserDto, onLogout: () -> Unit) {
             ) {
                 Surface(
                     modifier = Modifier.size(72.dp).clip(CircleShape),
-                    color = BrandPurpleContainer,
+                    color = BrandPrimaryContainer,
                 ) {
                     Icon(
                         Icons.Filled.Person,
                         contentDescription = null,
-                        tint = BrandPurple,
+                        tint = BrandPrimary,
                         modifier = Modifier.padding(16.dp),
                     )
                 }

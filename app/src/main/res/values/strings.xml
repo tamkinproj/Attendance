@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Attendance</string>
-    <string name="login_title">Teacher Login</string>
+    <string name="app_name">Gate Attendance</string>
+    <string name="login_title">Admin Sign In</string>
     <string name="email_hint">Email</string>
     <string name="password_hint">Password</string>
     <string name="login_button">Login</string>
