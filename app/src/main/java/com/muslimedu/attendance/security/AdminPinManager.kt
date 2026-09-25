@@ -43,6 +43,14 @@ class AdminPinManager @Inject constructor(
 
     fun isPinSet(): Boolean = prefs.contains(KEY_HASH)
 
+    /**
+     * How many digits the PIN has, so the keypad knows when it's complete and
+     * can check it by itself. Null for a PIN set before this was stored - that
+     * one is checked with an explicit OK key instead, never tried at each length
+     * (every try would count towards the lockout).
+     */
+    fun pinLength(): Int? = prefs.getInt(KEY_LENGTH, 0).takeIf { it > 0 && isPinSet() }
+
     suspend fun setPin(pin: String) {
         require(PinHasher.isValidFormat(pin)) { "PIN must be 4-8 digits" }
         val salt = PinHasher.newSalt()
@@ -51,6 +59,7 @@ class AdminPinManager @Inject constructor(
             .putString(KEY_SALT, encode(salt))
             .putString(KEY_HASH, encode(hash))
             .putInt(KEY_ITERATIONS, PinHasher.ITERATIONS)
+            .putInt(KEY_LENGTH, pin.length)
             .putInt(KEY_FAILED_ATTEMPTS, 0)
             .putLong(KEY_LOCKED_UNTIL, 0L)
             .apply()
@@ -92,10 +101,14 @@ class AdminPinManager @Inject constructor(
     companion object {
         const val MAX_ATTEMPTS = 5
         const val LOCKOUT_MILLIS = 60_000L
+
+        /** New PINs are 4 digits - the keypad fills four dots and checks the PIN by itself. */
+        const val NEW_PIN_LENGTH = 4
         private const val PREFS_FILE_NAME = "secure_admin_pin_prefs"
         private const val KEY_SALT = "pin_salt"
         private const val KEY_HASH = "pin_hash"
         private const val KEY_ITERATIONS = "pin_iterations"
+        private const val KEY_LENGTH = "pin_length"
         private const val KEY_FAILED_ATTEMPTS = "failed_attempts"
         private const val KEY_LOCKED_UNTIL = "locked_until"
     }

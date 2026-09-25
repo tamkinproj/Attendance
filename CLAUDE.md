@@ -222,7 +222,13 @@ this device), the same pieces the old gate screen used.
   Log, Sync & Account, Change PIN) sit behind a **device PIN**
   (`AdminPinManager`: salted PBKDF2 hash in Keystore-backed encrypted prefs,
   5 wrong tries -> 60s lockout, counted persistently). They relock when you
-  return to the gate. **Forgot PIN** = a *fresh* admin sign-in (an already
+  return to the gate. The PIN screen is an access-code keypad (the user's
+  mockup): title, dots, round 1-9 / 0 / delete keys, no system keyboard.
+  New PINs are 4 digits, entered twice ("Create" then "Confirm"); the
+  length is stored (`AdminPinManager.pinLength`) so entry checks itself on
+  the last dot. An older 4-8 digit PIN with no stored length gets an OK key
+  instead - never auto-tried at each length, which would burn lockout
+  attempts. A wrong code shakes and clears the dots. **Forgot PIN** = a *fresh* admin sign-in (an already
   open session doesn't count - `AuthViewModel.lastLoginAt`) clears it.
 - Sign-in is limited to role `admin` (the gate endpoints' `requireAdmin()`
   checks `role_id === 2`, so teachers and superadmins would only get 403s).
