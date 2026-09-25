@@ -13,6 +13,7 @@ import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +31,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -37,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -80,6 +83,19 @@ import java.util.concurrent.Executors
 fun LiveFaceCaptureView(
     onCaptured: (Bitmap) -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * Fills [modifier]'s whole area with the camera under [FaceScanOverlay]
+     * (the gate's face step). Off: a 3:4 framed preview with a status line
+     * and progress bar (enrollment).
+     */
+    fullScreen: Boolean = false,
+    /** Changing it re-arms the one-shot capture on the same running camera - an automatic retry without restarting the preview. */
+    captureKey: Int = 0,
+    /** Replaces the live status line (full screen only), e.g. "Checking face..." or why the last try didn't match. */
+    message: String? = null,
+    /** A captured frame is being checked: the overlay shows its full ring. */
+    busy: Boolean = false,
+    accent: Color = BrandPrimary,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -99,7 +115,11 @@ fun LiveFaceCaptureView(
 
     if (!hasCameraPermission) {
         Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Camera permission is needed to verify your face")
+            Text(
+                "Camera permission is needed to verify your face",
+                color = if (fullScreen) Color.White else Color.Unspecified,
+                modifier = Modifier.padding(top = if (fullScreen) 120.dp else 0.dp),
+            )
             OutlinedButton(
                 onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) },
                 modifier = Modifier.padding(top = 8.dp),
@@ -117,6 +137,7 @@ fun LiveFaceCaptureView(
     // actually fires.
     var progressFraction by remember { mutableFloatStateOf(0f) }
     var captured by remember { mutableStateOf(false) }
+    var faceSeen by remember { mutableStateOf(false) }
 
     // Best face seen so far, kept for the timeout fallback in the analyzer
     // below - there is no manual shutter button any more, so without this a
@@ -125,7 +146,7 @@ fun LiveFaceCaptureView(
     // screen stuck with no way forward.
     var bestFrame by remember { mutableStateOf<Bitmap?>(null) }
     var bestScore by remember { mutableFloatStateOf(0f) }
-    val startedAt = remember { System.currentTimeMillis() }
+    var startedAt by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     val previewView = remember {
         PreviewView(context).apply {
@@ -160,6 +181,17 @@ fun LiveFaceCaptureView(
     }
     val gate = remember { AutoCaptureGate() }
 
+    // A new captureKey starts a fresh capture on the camera that's already running.
+    LaunchedEffect(captureKey) {
+        captured = false
+        bestFrame = null
+        bestScore = 0f
+        startedAt = System.currentTimeMillis()
+        gate.consecutiveGoodFrames = 0
+        progressFraction = 0f
+        statusText = PROMPT_NO_FACE
+    }
+
     fun deliver(bitmap: Bitmap) {
         if (captured) return
         captured = true
@@ -190,6 +222,7 @@ fun LiveFaceCaptureView(
                         scope.launch(Dispatchers.Main.immediate) {
                             if (captured) return@launch
 
+                            faceSeen = score != null
                             if (score != null && score > bestScore) {
                                 bestScore = score
                                 bestFrame = bitmap
@@ -246,6 +279,21 @@ fun LiveFaceCaptureView(
             analysisExecutor.shutdown()
             fastDetector.close()
         }
+    }
+
+    if (fullScreen) {
+        Box(modifier = modifier.background(Color.Black)) {
+            AndroidView(factory = { previewView }, modifier = Modifier.matchParentSize())
+            FaceScanOverlay(
+                faceSeen = faceSeen,
+                progress = progressFraction,
+                status = message ?: if (faceSeen) "Scanning..." else "Position your face in the oval",
+                busy = busy,
+                accent = accent,
+                modifier = Modifier.matchParentSize(),
+            )
+        }
+        return
     }
 
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {

@@ -61,13 +61,24 @@ system: step 2 is `LiveFaceCaptureView` (auto-capture) +
 this device), the same pieces the old gate screen used.
 
 - **Gate Schedule - set before the gate can be used** (Admin > Gate
-  Schedule, `GateScheduleScreen`; `DeviceSettings.gateScansPerDay`, null
-  until set): **Morning only** (1 In + 1 Out), **Whole day** (2 + 2, out
-  and back for lunch) or Custom (3-4). Until it's set the dashboard shows a
-  "Set up the gate first" card and Coming In / Going Out lead to it (via the
-  admin PIN - `AppRoot.afterUnlock` - then back to the gate). Changes are in
-  the Audit Log (`gate_schedule_set`). The user asked for this because
-  schools differ (whole day 2 in / 2 out vs morning class 1 in / 1 out).
+  Schedule, `GateScheduleScreen`; `DeviceSettings.gateSchedule` =
+  `GateScheduleConfig(perDay, inTimes, outTimes)`, null until set):
+  **Morning only** (1 In + 1 Out), **Whole day** (2 + 2, out and back for
+  lunch) or Custom (3-4), plus an **opening time for every Coming In and
+  Going Out** (defaults: 6:00 / 11:00; whole day 6:00, 11:30, 12:30, 16:00;
+  must run In 1 < Out 1 < In 2 ...; edited with the system time picker).
+  Until it's set the dashboard shows a "Set up the gate first" card and
+  Coming In / Going Out lead to it (via the admin PIN - `AppRoot.afterUnlock`
+  - then back to the gate). Changes are in the Audit Log
+  (`gate_schedule_set`). The user asked for this because schools differ
+  (whole day 2 in / 2 out vs morning class 1 in / 1 out), and for Going Out
+  to stay hidden until its time and then appear by itself.
+  - Dashboard: a direction before its first opening time shows as a locked
+    "Opens at 11:00 AM" card; `GateDashboardViewModel.now` ticks every 20s
+    so it unlocks on its own.
+  - Per student: scan N of a direction is refused before its time
+    (`GateScanCheck.NotOpenYet`, e.g. back from lunch before Coming In 2
+    opens).
 - **Gate dashboard** (`GateDashboardScreen`, the home screen, no PIN):
   Coming In / Going Out buttons, sync status (pending count, last synced,
   Sync now), recent RFID records, "View all" -> `GateHistoryScreen` (by day,
@@ -92,8 +103,25 @@ this device), the same pieces the old gate screen used.
     covers a double tap - it replaced the old 60s duplicate window); one
     more than the day allows -> "No more Coming In today". Going Out is
     allowed with no Coming In first (a forgotten scan-in). Re-checked when
-    saving (`recordConfirmed`). The success card shows "Coming In · 1 of 2
-    today". Per device: another gate device's scans aren't counted.
+    saving (`recordConfirmed`). Per device: another gate device's scans
+    aren't counted.
+  - **Face step is full screen** (the user's mockup, in the app's theme):
+    `LiveFaceCaptureView(fullScreen = true)` puts the camera under
+    `FaceScanOverlay` - dimmed surroundings, dashed oval guide, corner
+    brackets, and once a face is in view a monochrome face-mesh web with a
+    sweeping scan line and a progress ring (a drawn pattern, not the
+    detected landmarks). Student chip + Cancel at the top.
+  - **Fully automatic, no buttons** (the user asked for no manual retry):
+    a face that doesn't match is retried on the same running camera
+    (`captureKey` re-arms the capture without rebinding CameraX) up to
+    `MAX_FACE_ATTEMPTS` (3) within the 30s deadline; only when all fail is
+    ONE rejected row saved. Every result (success, face failed, not
+    enrolled, unknown card, schedule refusal) closes itself after
+    `AUTO_CLOSE_MILLIS` (4s) with a countdown bar; a tap closes it sooner.
+    Cancel on the camera is the only control. A match that finishes after
+    Cancel records nothing.
+  - Success card follows the mockup: tick, photo, name, "Coming In · 1 of 2
+    today", Student ID / Section and today's Coming In / Going Out times.
   - The view model outlives the screen, so it ignores the reader unless
     the screen is open (`enter()`/`exit()`) - a tap in the registration
     wizard must not record gate attendance. The wizard does the same the
@@ -194,7 +222,13 @@ this device), the same pieces the old gate screen used.
   Log, Sync & Account, Change PIN) sit behind a **device PIN**
   (`AdminPinManager`: salted PBKDF2 hash in Keystore-backed encrypted prefs,
   5 wrong tries -> 60s lockout, counted persistently). They relock when you
-  return to the gate. **Forgot PIN** = a *fresh* admin sign-in (an already
+  return to the gate. The PIN screen is an access-code keypad (the user's
+  mockup): title, dots, round 1-9 / 0 / delete keys, no system keyboard.
+  New PINs are 4 digits, entered twice ("Create" then "Confirm"); the
+  length is stored (`AdminPinManager.pinLength`) so entry checks itself on
+  the last dot. An older 4-8 digit PIN with no stored length gets an OK key
+  instead - never auto-tried at each length, which would burn lockout
+  attempts. A wrong code shakes and clears the dots. **Forgot PIN** = a *fresh* admin sign-in (an already
   open session doesn't count - `AuthViewModel.lastLoginAt`) clears it.
 - Sign-in is limited to role `admin` (the gate endpoints' `requireAdmin()`
   checks `role_id === 2`, so teachers and superadmins would only get 403s).

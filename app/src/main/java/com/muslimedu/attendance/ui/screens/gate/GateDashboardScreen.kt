@@ -63,6 +63,7 @@ import com.muslimedu.attendance.viewmodel.GateDirection
 import com.muslimedu.attendance.viewmodel.GateTodayStats
 import java.text.DateFormat
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Date
 
@@ -96,7 +97,8 @@ fun GateDashboardScreen(
     val isOnline by viewModel.isOnline.collectAsState()
     val readerStatus by viewModel.readerStatus.collectAsState()
     val syncMessage by viewModel.syncMessage.collectAsState()
-    val scansPerDay by viewModel.scansPerDay.collectAsState()
+    val schedule by viewModel.schedule.collectAsState()
+    val now by viewModel.now.collectAsState()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -108,17 +110,26 @@ fun GateDashboardScreen(
         item { SummaryCard(today, unsynced) }
 
         // The gate can't be used until an admin sets how many scans a day each student makes.
-        if (scansPerDay == null) item { ScheduleSetupCard(onSetUpSchedule) }
+        if (schedule == null) item { ScheduleSetupCard(onSetUpSchedule) }
 
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                val open = { direction: GateDirection -> if (scansPerDay == null) onSetUpSchedule() else onOpen(direction) }
-                DirectionCard(GateDirection.IN, Modifier.weight(1f)) { open(GateDirection.IN) }
-                DirectionCard(GateDirection.OUT, Modifier.weight(1f)) { open(GateDirection.OUT) }
+                GateDirection.entries.forEach { direction ->
+                    // Locked until the schedule's first opening for that direction;
+                    // it unlocks by itself at that time (the view model's clock ticks).
+                    val opensAt = schedule?.firstOpening(direction.apiValue)?.takeIf { now < it }
+                    if (opensAt != null) {
+                        LockedDirectionCard(direction, opensAt, Modifier.weight(1f))
+                    } else {
+                        DirectionCard(direction, Modifier.weight(1f)) {
+                            if (schedule == null) onSetUpSchedule() else onOpen(direction)
+                        }
+                    }
+                }
             }
-            scansPerDay?.let {
+            schedule?.let {
                 Text(
-                    "Each student: $it Coming In · $it Going Out per day",
+                    "Each student: ${it.perDay} Coming In · ${it.perDay} Going Out per day",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 10.dp, start = 4.dp),
@@ -341,6 +352,40 @@ internal fun ReaderLine(status: ReaderStatus, modifier: Modifier = Modifier, onD
             color = if (onDark) Color.White.copy(alpha = 0.9f) else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 8.dp),
         )
+    }
+}
+
+/** A direction before its first opening time today: not tappable, says when it opens. */
+@Composable
+private fun LockedDirectionCard(direction: GateDirection, opensAt: LocalTime, modifier: Modifier = Modifier) {
+    val color = MaterialTheme.colorScheme.onSurfaceVariant
+    Card(
+        shape = CardShape,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = modifier,
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(18.dp)) {
+            Box(
+                modifier = Modifier.size(60.dp).background(color.copy(alpha = 0.10f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.Schedule, contentDescription = null, tint = color, modifier = Modifier.size(30.dp))
+            }
+            Text(
+                direction.label,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = color,
+                modifier = Modifier.padding(top = 18.dp),
+            )
+            Text(
+                "Opens at ${displayTime(opensAt.toString())}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = color,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
     }
 }
 

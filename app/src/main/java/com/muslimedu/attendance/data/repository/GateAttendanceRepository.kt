@@ -45,12 +45,23 @@ class GateAttendanceRepository @Inject constructor(
      * Checked before the face step, so a refused scan (a double tap, or one
      * more than the day allows) never asks the student to look at the camera.
      */
-    suspend fun checkSchedule(code: String, direction: String, today: LocalDate = LocalDate.now()): GateScanCheck =
+    suspend fun checkSchedule(code: String, direction: String, now: LocalDateTime = LocalDateTime.now()): GateScanCheck =
         GateSchedule.check(
-            todayRecorded = gateScanDao.recordedForCodeOnDate(deviceSettings.schoolId.value, code, today.toString()),
+            todayRecorded = recordedToday(code, now.toLocalDate()),
             direction = direction,
-            perDay = deviceSettings.gateScansPerDay.value,
+            config = deviceSettings.gateSchedule.value,
+            now = now.toLocalTime(),
         )
+
+    /** The student's first Coming In and latest Going Out today ("HH:mm"), for the success card. */
+    suspend fun timesToday(code: String, today: LocalDate = LocalDate.now()): Pair<String?, String?> {
+        val scans = recordedToday(code, today)
+        return scans.firstOrNull { it.direction == GateScanEntity.DIRECTION_IN }?.scanTime to
+            scans.lastOrNull { it.direction == GateScanEntity.DIRECTION_OUT }?.scanTime
+    }
+
+    private suspend fun recordedToday(code: String, today: LocalDate): List<GateScanEntity> =
+        gateScanDao.recordedForCodeOnDate(deviceSettings.schoolId.value, code, today.toString())
 
     /** Card read + face confirmed: this is the attendance record. */
     suspend fun recordConfirmed(
@@ -62,7 +73,7 @@ class GateAttendanceRepository @Inject constructor(
         nowMillis: Long = System.currentTimeMillis(),
     ): GateRecordResult {
         // Checked again: the student may have been recorded while their face check ran.
-        val check = checkSchedule(student.code, direction, now.toLocalDate())
+        val check = checkSchedule(student.code, direction, now)
         if (check !is GateScanCheck.Allowed) return GateRecordResult.NotAllowed(check)
         val scan = newScan(student, rfidUid, direction, now, nowMillis).copy(
             verifiedByFace = true,
