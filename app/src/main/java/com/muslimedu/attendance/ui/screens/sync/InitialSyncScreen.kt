@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PriorityHigh
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -40,6 +41,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.muslimedu.attendance.data.remote.dto.UserDto
 import com.muslimedu.attendance.ui.components.BrandBackdrop
 import com.muslimedu.attendance.ui.components.BrandLogo
+import com.muslimedu.attendance.ui.theme.AccentGold
 import com.muslimedu.attendance.ui.theme.AccentRed
 import com.muslimedu.attendance.ui.theme.BrandPrimary
 import com.muslimedu.attendance.viewmodel.InitialSyncViewModel
@@ -151,7 +153,11 @@ private fun StepRow(number: Int, title: String, step: SyncStepState) {
                 Text(
                     it,
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (step.status == SyncStepStatus.Failed) AccentRed else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = when (step.status) {
+                        SyncStepStatus.Failed -> AccentRed
+                        SyncStepStatus.Skipped -> AccentGold
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    },
                 )
             }
         }
@@ -163,6 +169,7 @@ private fun StepIndicatorDot(number: Int, status: SyncStepStatus) {
     val (fill, content) = when (status) {
         SyncStepStatus.Done -> BrandPrimary to Color.White
         SyncStepStatus.Failed -> AccentRed to Color.White
+        SyncStepStatus.Skipped -> AccentGold to Color.White
         else -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
     }
     Box(
@@ -172,6 +179,7 @@ private fun StepIndicatorDot(number: Int, status: SyncStepStatus) {
         when (status) {
             SyncStepStatus.Done -> Icon(Icons.Filled.Check, contentDescription = "Done", tint = content, modifier = Modifier.size(18.dp))
             SyncStepStatus.Failed -> Icon(Icons.Filled.PriorityHigh, contentDescription = "Failed", tint = content, modifier = Modifier.size(18.dp))
+            SyncStepStatus.Skipped -> Icon(Icons.Filled.Info, contentDescription = "Not available yet", tint = content, modifier = Modifier.size(18.dp))
             SyncStepStatus.Running -> CircularProgressIndicator(color = BrandPrimary, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
             SyncStepStatus.Waiting -> Text("$number", color = content, style = MaterialTheme.typography.labelLarge)
         }

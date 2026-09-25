@@ -96,8 +96,16 @@ contract (`GateOfflineContractTest` pins it) and degrades safely until then.
    ```json
    {"students":[{"student_id":501,"name":"Arjun S","code":"S1001","photo":"https://...","gender":"male","section_id":10,"section_name":"Grade 8B"}]}
    ```
-   Until it exists, "Download students" shows a clear "not supported yet"
-   message and students can be added by hand in Admin > Students.
+   Register it as **`Route::post`** like every other endpoint here. Until it
+   exists, the sync step shows "Download the student list" as *skipped* (amber,
+   "not set up on the school server yet") and still opens the gate; students
+   can be added by hand in Admin > Students. A missing route is recognised by
+   status code (`isMissingEndpoint`: 404, 405, 501), not by message: Laravel
+   answers every unknown route with a JSON `message`, and with a GET-only
+   catch-all (`Route::fallback()`) an unknown POST route comes back as **405**
+   "POST not supported, supported methods: GET, HEAD" rather than 404 - which
+   is what a real device hit first. A route registered as GET would look the
+   same to the app.
 
 **Not verified by a local build** (this sandbox can't resolve the Android
 Gradle Plugin) and not run on a device - check CI and test on real
