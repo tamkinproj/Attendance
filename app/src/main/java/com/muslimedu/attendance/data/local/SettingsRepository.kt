@@ -42,9 +42,13 @@ class SettingsRepository @Inject constructor(
 
     companion object {
         private const val PREFS_FILE_NAME = "settings_prefs"
-        private const val KEY_MIN_MATCH_SCORE = "min_match_score"
+        // New key with the MobileFaceNet model: a threshold saved for the old
+        // landmark matcher means something else on this scale, so drop it.
+        private const val KEY_MIN_MATCH_SCORE = "min_match_score_mobilefacenet"
         private const val KEY_LIVENESS_THRESHOLD = "liveness_threshold"
-        const val DEFAULT_MIN_MATCH_SCORE = 0.85f
+        // MobileFaceNet score (FaceAlignment.matchScore): ~0.5 for different
+        // people, 0.9+ for the same person. 0.75 = cosine 0.5, between the two.
+        const val DEFAULT_MIN_MATCH_SCORE = 0.75f
         const val DEFAULT_LIVENESS_THRESHOLD = 0.7f
     }
 }

@@ -62,6 +62,12 @@ android {
         htmlReport = true
     }
 
+    // The face model is memory-mapped from the APK (MobileFaceNetRecognizer),
+    // which only works on an uncompressed asset.
+    androidResources {
+        noCompress += "tflite"
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"

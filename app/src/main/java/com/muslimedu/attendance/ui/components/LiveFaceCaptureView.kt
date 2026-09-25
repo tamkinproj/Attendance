@@ -68,7 +68,7 @@ import java.util.concurrent.Executors
  * pins every frame's score to its floor and the gate never opens) only decides
  * *when* to hand a frame over - a cheap, throwaway
  * pass over "does this look like a live face right now." The delivered
- * bitmap still goes through [com.muslimedu.attendance.face.MlKitFaceRecognizer]'s
+ * bitmap still goes through [com.muslimedu.attendance.face.MobileFaceNetRecognizer]'s
  * own PERFORMANCE_MODE_ACCURATE detector for the real enroll/verify call the
  * caller makes afterwards; this view has no opinion on match/liveness
  * *scoring*, only on whether a frame is worth handing over at all.

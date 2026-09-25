@@ -144,20 +144,37 @@ this device), the same pieces the old gate screen used.
   refuses a match ("This face is already enrolled for <name> (<ID>)",
   `FaceEnrollResult.AlreadyEnrolled`, logged in the Audit Log). A match
   means a score at the gate's own match threshold (Face Settings, default
-  0.85): exactly when the gate would accept the face as that other student.
-  **Off until a real face-recognition model is installed**: it only runs
-  when `FaceRecognizer.canTellPeopleApart` is true, and the current
-  `MlKitFaceRecognizer` says false. Its landmark-ratio "embedding" is all
-  positive ratios of about the same size for every face, so the cosine
-  between two *different* people comes out near 1, above any usable
-  threshold: the check would refuse every student after the first. The
-  same weakness means the gate's face confirmation can't really tell
-  students apart yet either. Fix: bundle a real embedding model (e.g.
-  MobileFaceNet `.tflite`, TensorFlow Lite is already a dependency) behind
-  `FaceRecognizer`, return true there, and have every face re-enrolled
-  (old landmark templates aren't comparable). Downloading a third-party
-  model was blocked in the session that built this, so it is waiting on
-  the user.
+  0.75): exactly when the gate would accept the face as that other student.
+  Runs only when `FaceRecognizer.canTellPeopleApart` is true - it is for
+  the MobileFaceNet recognizer below; the old landmark placeholder scored
+  any two faces ~0.99 and would have refused every student after the first.
+- **Face recognition = MobileFaceNet** (`MobileFaceNetRecognizer`, replaced
+  the landmark-ratio placeholder `MlKitFaceRecognizer`, which could not
+  tell people apart). ML Kit finds the face + eyes/mouth corners ->
+  `FaceAlignment` fits a similarity transform onto the standard ArcFace
+  112x112 layout (sides picked by x, so mirrored frames align the same) ->
+  RGB `(v - 127.5) / 128` -> `assets/mobilefacenet.tflite` (input fixed at
+  batch 2, so the face is fed twice; output 192-d, L2-normalised) -> score
+  `(1 + cosine) / 2` (`FaceAlignment.matchScore`, ~0.5 different people,
+  0.9+ same person). Model: MIT (syaringan357/Android-MobileFaceNet-MTCNN-
+  FaceAntiSpoofing), converted from sirius-ai/MobileFaceNet_TF (Apache-2.0);
+  source, SHA-256 and both licences in `assets/licenses/mobilefacenet-NOTICE.txt`
+  (the SHA is pinned by `FaceAlignmentTest`). The `.tflite` is stored
+  uncompressed (`androidResources.noCompress`) because it is memory-mapped.
+  - Checked in the sandbox with the same alignment/normalisation in Python
+    (tflite-runtime, MediaPipe for the landmarks) on 2 people x 2 photos:
+    same person 0.91-0.93, different people 0.46-0.55. **Not checked on a
+    phone camera** - tune Face Settings if real students get refused.
+  - Default match threshold is now **0.75** (cosine 0.5), saved under a new
+    prefs key (`min_match_score_mobilefacenet`) so a value chosen for the
+    old matcher is dropped.
+  - Old faces: `MIGRATION_8_9` adds `face_templates.model` (`landmark` for
+    existing rows, `mobilefacenet` for new). Every `FaceTemplateDao` lookup
+    only sees `mobilefacenet` rows, so students enrolled before this show
+    "no face" (and the gate refuses them) until re-enrolled in the wizard,
+    which replaces the old row. Old rows are kept, not deleted.
+  - Liveness is unchanged: still `LivenessDetector`'s eye-open heuristic,
+    so a good photo/video of the student can still pass the camera step.
 - Admin screens (Register Card & Face, Students, Face Settings, Audit
   Log, Sync & Account, Change PIN) sit behind a **device PIN**
   (`AdminPinManager`: salted PBKDF2 hash in Keystore-backed encrypted prefs,
@@ -404,6 +421,9 @@ com.muslimedu.attendance/
       camera preview and a status line; a failed verification re-arms the
       same camera for another automatic attempt. See the caveat below for
       exactly what is and isn't verified here.)
+
+**Superseded**: the placeholder below was replaced by a real MobileFaceNet
+model - see "Face recognition = MobileFaceNet" near the top. Kept for history.
 
 **Important caveat on the above**: ML Kit's Face Detection API does face
 *detection* (bounding box, landmarks, eye/smile probabilities) - it has no
@@ -907,7 +927,7 @@ adb shell am start -n com.muslimedu.attendance/.MainActivity
 All versions centralized in `gradle/libs.versions.toml`:
 - AndroidX + Jetpack: Core, Lifecycle, Compose, Room, WorkManager, Hilt
 - Networking: Retrofit, OkHttp, Gson
-- ML: ML Kit Face Detection, TensorFlow Lite
+- ML: ML Kit Face Detection, TensorFlow Lite (runs the bundled MobileFaceNet model)
 - Camera: CameraX (core, camera2, lifecycle, view) - embedded live capture, see `LiveFaceCaptureView`
 - Security: Tink, Android Keystore
 - Testing: JUnit, Espresso, Compose Test

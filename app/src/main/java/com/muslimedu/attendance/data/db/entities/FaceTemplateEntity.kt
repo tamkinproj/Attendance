@@ -28,7 +28,17 @@ data class FaceTemplateEntity(
     @ColumnInfo(name = "is_active") val isActive: Boolean = true,
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
+    // v9. No defaultValue here on purpose (see GateScanEntity): the
+    // migration's DEFAULT marks rows from before the model as MODEL_LANDMARK.
+    /** Which recognizer made [encryptedEmbedding]; only [MODEL_MOBILEFACENET] templates are used. */
+    @ColumnInfo(name = "model") val model: String = MODEL_MOBILEFACENET,
 ) {
+    companion object {
+        /** The old landmark-ratio placeholder: kept on the device, never compared with. */
+        const val MODEL_LANDMARK = "landmark"
+        const val MODEL_MOBILEFACENET = "mobilefacenet"
+    }
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is FaceTemplateEntity) return false
@@ -36,7 +46,8 @@ data class FaceTemplateEntity(
             encryptedEmbedding.contentEquals(other.encryptedEmbedding) &&
             encryptionVersion == other.encryptionVersion && enrolledAt == other.enrolledAt &&
             enrolledBy == other.enrolledBy && livenessScore == other.livenessScore &&
-            isActive == other.isActive && createdAt == other.createdAt && updatedAt == other.updatedAt
+            isActive == other.isActive && createdAt == other.createdAt && updatedAt == other.updatedAt &&
+            model == other.model
     }
 
     override fun hashCode(): Int {
