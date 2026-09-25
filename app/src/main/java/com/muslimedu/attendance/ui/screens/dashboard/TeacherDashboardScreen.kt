@@ -196,12 +196,10 @@ private fun HeroStatChip(value: Int, label: String, modifier: Modifier = Modifie
 private fun StatusCard(readerStatus: ReaderStatus, isOnline: Boolean, modifier: Modifier = Modifier) {
     val readerColor = when {
         readerStatus.connected -> AccentSuccess
-        readerStatus.canSimulate -> AccentGold
         else -> AccentRed
     }
     val readerLabel = when {
         readerStatus.connected -> readerStatus.deviceName?.let { "Reader connected - $it" } ?: "Reader connected"
-        readerStatus.canSimulate -> "No reader - use Simulate Scan"
         else -> "No reader detected"
     }
     val networkColor = if (isOnline) AccentSuccess else AccentGold

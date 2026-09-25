@@ -74,6 +74,7 @@ fun StudentListScreen(
     val addState by viewModel.addState.collectAsState()
     var query by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf(StudentFilter.All) }
+    var cardActionsFor by remember { mutableStateOf<StudentEntity?>(null) }
 
     // This ViewModel is created once and outlives navigating away and back
     // (no back stack backs it, same as the enrollment screens), and its rows
@@ -143,13 +144,42 @@ fun StudentListScreen(
                         StudentListRow(
                             row,
                             onRegisterFace = { onRegisterFace(row.student) },
-                            onAssignCard = { onAssignCard(row.student) },
+                            onAssignCard = {
+                                // A student with a card chooses replace or deactivate first.
+                                if (row.student.rfidCardNumber != null) cardActionsFor = row.student else onAssignCard(row.student)
+                            },
                             loadPhoto = { viewModel.loadPhoto(row.student) },
                         )
                     }
                 }
             }
         }
+    }
+
+    cardActionsFor?.let { student ->
+        AlertDialog(
+            onDismissRequest = { cardActionsFor = null },
+            title = { Text("RFID card") },
+            text = {
+                Text(
+                    "${student.name} has card ${student.rfidCardNumber}.\n\n" +
+                        "Replace: tap a new card - the old one is deactivated.\n" +
+                        "Deactivate: the card stops working at the gate and can be registered to another student.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    cardActionsFor = null
+                    onAssignCard(student)
+                }) { Text("Replace card") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    cardActionsFor = null
+                    viewModel.deactivateCard(student)
+                }) { Text("Deactivate card", color = AccentRed) }
+            },
+        )
     }
 
     if (isAddingStudent) {
@@ -200,6 +230,7 @@ private fun StudentListRow(
                 }
                 Text(student.code, style = MaterialTheme.typography.bodySmall)
                 student.sectionName?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                CardSyncLine(student)
             }
             val hasCard = student.rfidCardNumber != null
             IconButton(onClick = onAssignCard) {
@@ -218,6 +249,19 @@ private fun StudentListRow(
             }
         }
     }
+}
+
+/** Card number and whether the web admin's card registry has it yet. */
+@Composable
+private fun CardSyncLine(student: StudentEntity) {
+    val card = student.rfidCardNumber
+    val (text, color) = when (student.rfidSyncStatus) {
+        StudentEntity.RFID_FAILED -> "Card not registered on server: ${student.rfidSyncError ?: "refused"}" to AccentRed
+        StudentEntity.RFID_PENDING ->
+            (if (card != null) "Card $card - pending sync" else "Card deactivation - pending sync") to AccentGold
+        else -> (card?.let { "Card $it" } ?: return) to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Text(text, style = MaterialTheme.typography.labelSmall, color = color)
 }
 
 @Composable

@@ -103,15 +103,6 @@ fun RfidScanScreen(
                     is ScanUiState.ReaderError -> ReaderErrorCard(state.message, onDismiss = viewModel::dismissResult)
                 }
             }
-
-            if (viewModel.canSimulate) {
-                Button(
-                    onClick = { viewModel.simulateScan() },
-                    modifier = Modifier.padding(top = 32.dp),
-                ) {
-                    Text("Simulate Scan (debug)")
-                }
-            }
         }
     }
 }

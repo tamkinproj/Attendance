@@ -33,12 +33,10 @@ import com.muslimedu.attendance.ui.theme.AccentSuccess
 fun ReaderStatusBadge(status: ReaderStatus, modifier: Modifier = Modifier) {
     val label = when {
         status.connected -> status.deviceName?.let { "Reader connected - $it" } ?: "Reader connected"
-        status.canSimulate -> "No reader detected - use Simulate Scan"
         else -> "No reader detected - plug in a USB reader"
     }
     val color = when {
         status.connected -> AccentSuccess
-        status.canSimulate -> AccentGold
         else -> AccentRed
     }
 

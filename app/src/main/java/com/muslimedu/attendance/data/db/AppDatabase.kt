@@ -23,7 +23,7 @@ import com.muslimedu.attendance.data.db.entities.StudentEntity
         AuditLogEntity::class,
         GateScanEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -67,6 +67,41 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS `index_gate_scans_sync_status` ON `gate_scans` (`sync_status`)")
                 db.execSQL(
                     "CREATE INDEX IF NOT EXISTS `index_gate_scans_school_id_scan_date` ON `gate_scans` (`school_id`, `scan_date`)",
+                )
+            }
+        }
+
+        /**
+         * RFID + face confirmation. Gate rows gain what was checked (card,
+         * face, outcome) and a per-row event id; students gain the card
+         * registry sync state. Existing gate rows were recorded by the
+         * earlier flow, so they keep outcome 'recorded' with rfid_verified 0
+         * (not provably card-read) and get a fresh event id each.
+         *
+         * Also removes the three built-in demo students (codes STU001-3
+         * with their made-up card UIDs) if an old build seeded them - no
+         * sample data or fake cards in the gate app.
+         */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `gate_scans` ADD COLUMN `student_id` INTEGER")
+                db.execSQL("ALTER TABLE `gate_scans` ADD COLUMN `section_name` TEXT")
+                db.execSQL("ALTER TABLE `gate_scans` ADD COLUMN `rfid_uid` TEXT")
+                db.execSQL("ALTER TABLE `gate_scans` ADD COLUMN `rfid_verified` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `gate_scans` ADD COLUMN `outcome` TEXT NOT NULL DEFAULT 'recorded'")
+                db.execSQL("ALTER TABLE `gate_scans` ADD COLUMN `failure_reason` TEXT")
+                db.execSQL("ALTER TABLE `gate_scans` ADD COLUMN `event_id` TEXT NOT NULL DEFAULT ''")
+                db.execSQL("UPDATE `gate_scans` SET `event_id` = lower(hex(randomblob(16))) WHERE `event_id` = ''")
+
+                db.execSQL("ALTER TABLE `students` ADD COLUMN `rfid_sync_status` TEXT NOT NULL DEFAULT 'synced'")
+                db.execSQL("ALTER TABLE `students` ADD COLUMN `rfid_sync_error` TEXT")
+                // Cards assigned before the server kept a registry exist only
+                // here - queue them for upload once.
+                db.execSQL("UPDATE `students` SET `rfid_sync_status` = 'pending' WHERE `rfid_card_number` IS NOT NULL")
+
+                db.execSQL(
+                    "DELETE FROM `students` WHERE `is_local_only` = 1 AND `code` IN ('STU001', 'STU002', 'STU003') " +
+                        "AND `rfid_card_number` IN ('04:1A:2B:3C', '04:5D:6E:7F', '09:AA:BB:CC')",
                 )
             }
         }

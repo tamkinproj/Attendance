@@ -35,8 +35,9 @@ class StudentDownloadUnavailableException : Exception(
 internal fun isMissingEndpoint(httpCode: Int): Boolean = httpCode == 404 || httpCode == 405 || httpCode == 501
 
 /**
- * Downloads the whole school's student list (proposed `admin_gate_students`
- * endpoint) into the local cache so gate scanning works offline.
+ * Downloads the whole school's student list (`admin_gate_students`) into the
+ * local cache so gate scanning works offline - including each student's
+ * registered RFID card when the server keeps the card registry.
  *
  * Merged by `code` - the one identifier the backend and this device share.
  * A student already on the device (downloaded before, or added by hand)
@@ -54,10 +55,10 @@ class StudentDownloadRepository @Inject constructor(
 ) {
     suspend fun download(): Result<StudentDownloadSummary> {
         if (!deviceSettings.isBound) return Result.failure(Exception("Sign in as a school admin first"))
-        val students = try {
+        val data = try {
             val response = apiService.adminGateStudents(GateStudentsRequest())
             if (!response.success) return Result.failure(Exception(response.message ?: "Download failed"))
-            response.data?.students ?: return Result.failure(Exception("The server did not return a student list"))
+            response.data ?: return Result.failure(Exception("The server did not return a student list"))
         } catch (e: HttpException) {
             if (isMissingEndpoint(e.code())) return Result.failure(StudentDownloadUnavailableException())
             return Result.failure(Exception(e.extractApiErrorMessage() ?: "Download failed (${e.code()})"))
@@ -65,14 +66,15 @@ class StudentDownloadRepository @Inject constructor(
             return Result.failure(Exception("Network error - check your connection"))
         }
 
+        val students = data.students ?: return Result.failure(Exception("The server did not return a student list"))
         val schoolId = deviceSettings.schoolId.value
-        val summary = merge(schoolId, students)
+        val summary = merge(schoolId, students, rfidManaged = data.rfidManaged == true)
         deviceSettings.lastStudentDownloadAt = System.currentTimeMillis()
         students.forEach { photoCache.prefetch(schoolId, it.studentId, it.photo) }
         return Result.success(summary)
     }
 
-    private suspend fun merge(schoolId: Int, students: List<GateStudentDto>): StudentDownloadSummary {
+    private suspend fun merge(schoolId: Int, students: List<GateStudentDto>, rfidManaged: Boolean): StudentDownloadSummary {
         var added = 0
         var updated = 0
         var skipped = 0
@@ -97,6 +99,7 @@ class StudentDownloadRepository @Inject constructor(
                 if (existing != null && existing.studentId != dto.studentId) {
                     faceTemplateDao.reassignStudent(schoolId, existing.studentId, dto.studentId)
                 }
+                val card = if (rfidManaged) cardFromServer(existing, code, dto.rfidUid, schoolId, now) else null
                 studentDao.insert(
                     StudentEntity(
                         id = existing?.id ?: 0,
@@ -108,16 +111,42 @@ class StudentDownloadRepository @Inject constructor(
                         gender = dto.gender ?: existing?.gender,
                         sectionId = dto.sectionId ?: existing?.sectionId,
                         sectionName = dto.sectionName ?: existing?.sectionName,
-                        rfidCardNumber = existing?.rfidCardNumber,
+                        rfidCardNumber = if (card != null) card.uid else existing?.rfidCardNumber,
                         isLocalOnly = false,
                         lastSyncedAt = now,
                         createdAt = existing?.createdAt ?: now,
                         updatedAt = now,
+                        rfidSyncStatus = if (card != null) StudentEntity.RFID_SYNCED else existing?.rfidSyncStatus ?: StudentEntity.RFID_SYNCED,
+                        rfidSyncError = if (card != null) null else existing?.rfidSyncError,
                     ),
                 )
                 if (existing == null) added++ else updated++
             }
         }
         return StudentDownloadSummary(added, updated, skipped)
+    }
+
+    /** A card decision from the server's registry; [uid] null means "no card". */
+    private class ServerCard(val uid: String?)
+
+    /**
+     * The card this student should have per the server, or null to keep
+     * what's on the device. The device's card wins while the admin's own
+     * change there hasn't been sent (pending) or was refused (failed) - the
+     * server doesn't know about it yet. A card the server has moved to this
+     * student is taken off whoever held it here, as long as that holder has
+     * no unsent change of their own; otherwise both are left as they are
+     * and the next upload sorts it out.
+     */
+    private suspend fun cardFromServer(existing: StudentEntity?, code: String, serverUid: String?, schoolId: Int, now: Long): ServerCard? {
+        if (existing != null && existing.rfidSyncStatus != StudentEntity.RFID_SYNCED) return null
+        val uid = serverUid?.trim()?.takeIf { it.isNotEmpty() }
+        if (uid == null || uid == existing?.rfidCardNumber) return ServerCard(uid)
+        val holder = database.studentDao().findAnyByRfid(uid)
+        if (holder != null && holder.code != code) {
+            if (holder.schoolId != schoolId || holder.rfidSyncStatus != StudentEntity.RFID_SYNCED) return null
+            database.studentDao().clearRfid(holder.id, now)
+        }
+        return ServerCard(uid)
     }
 }

@@ -39,14 +39,37 @@ interface GateScanDao {
     @Query("SELECT * FROM gate_scans WHERE school_id = :schoolId AND scan_date = :scanDate ORDER BY scanned_at DESC")
     fun observeForDate(schoolId: Int, scanDate: String): Flow<List<GateScanEntity>>
 
+    /** Newest first, every outcome - the dashboard's recent list and the history screen. */
+    @Query("SELECT * FROM gate_scans WHERE school_id = :schoolId ORDER BY scanned_at DESC LIMIT :limit")
+    fun observeRecent(schoolId: Int, limit: Int): Flow<List<GateScanEntity>>
+
+    /** Dates that have any gate record, newest first - the history screen's day picker. */
+    @Query("SELECT DISTINCT scan_date FROM gate_scans WHERE school_id = :schoolId ORDER BY scan_date DESC")
+    fun observeDates(schoolId: Int): Flow<List<String>>
+
+    /** The student's latest *attendance* (face-confirmed) record - what double-tap protection compares against. */
     @Query(
-        "SELECT * FROM gate_scans WHERE school_id = :schoolId AND student_code = :code " +
+        "SELECT * FROM gate_scans WHERE school_id = :schoolId AND student_code = :code AND outcome = 'recorded' " +
             "ORDER BY scanned_at DESC LIMIT 1",
     )
-    suspend fun latestForCode(schoolId: Int, code: String): GateScanEntity?
+    suspend fun latestRecordedForCode(schoolId: Int, code: String): GateScanEntity?
 
     @Query("SELECT COUNT(*) FROM gate_scans WHERE school_id = :schoolId AND sync_status = :syncStatus")
     fun observeCount(schoolId: Int, syncStatus: String): Flow<Int>
+
+    /** Attendance records not yet on the server - what "unsynced records" means to the gate attendant. */
+    @Query(
+        "SELECT COUNT(*) FROM gate_scans WHERE school_id = :schoolId AND outcome = 'recorded' AND sync_status = 'pending'",
+    )
+    fun observeUnsyncedAttendanceCount(schoolId: Int): Flow<Int>
+
+    @Query(
+        "SELECT COUNT(*) FROM gate_scans WHERE school_id = :schoolId AND outcome = 'recorded' AND sync_status = 'pending'",
+    )
+    suspend fun unsyncedAttendanceCount(schoolId: Int): Int
+
+    @Query("SELECT MAX(last_sync_at) FROM gate_scans WHERE school_id = :schoolId AND sync_status = 'synced'")
+    fun observeLastSyncedAt(schoolId: Int): Flow<Long?>
 
     @Query("SELECT * FROM gate_scans WHERE school_id = :schoolId AND sync_status = 'failed' ORDER BY scanned_at DESC")
     fun observeFailed(schoolId: Int): Flow<List<GateScanEntity>>

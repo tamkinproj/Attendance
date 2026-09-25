@@ -1,6 +1,5 @@
 package com.muslimedu.attendance.data.repository
 
-import com.muslimedu.attendance.data.db.dao.AttendanceDao
 import com.muslimedu.attendance.data.db.dao.StudentDao
 import com.muslimedu.attendance.data.db.entities.StudentEntity
 import com.muslimedu.attendance.data.local.DeviceSettings
@@ -8,17 +7,24 @@ import com.muslimedu.attendance.security.AuditLogger
 import javax.inject.Inject
 import javax.inject.Singleton
 
+sealed class CardAssignResult {
+    data class Assigned(val replacedUid: String?) : CardAssignResult()
+
+    /** The student already has [currentUid] - ask before replacing (the old card is deactivated). */
+    data class NeedsReplace(val currentUid: String) : CardAssignResult()
+
+    /** The card belongs to another student - it must be deactivated there first. */
+    data class OwnedByOther(val owner: StudentEntity) : CardAssignResult()
+}
+
 /**
- * Looks up students by RFID UID against the local offline cache. Real roster
- * data comes from [com.muslimedu.attendance.data.repository.RosterRepository]
- * syncing `/teacher_attendance_roster`; [seedSampleDataIfEmpty] only fills the
- * cache with a few test students when that hasn't run yet (e.g. no backend
- * access, or the user picked "Continue Offline" before ever syncing).
+ * Looks up students by RFID UID against the local offline cache, filled by
+ * the student download ([StudentDownloadRepository]) or added by hand. There
+ * is no sample/demo data: every student and card here is real.
  */
 @Singleton
 class StudentRepository @Inject constructor(
     private val studentDao: StudentDao,
-    private val attendanceDao: AttendanceDao,
     private val auditLogger: AuditLogger,
     private val deviceSettings: DeviceSettings,
 ) {
@@ -34,28 +40,55 @@ class StudentRepository @Inject constructor(
     suspend fun findByCode(code: String): StudentEntity? =
         studentDao.findByCodeInSchool(deviceSettings.schoolId.value, code)
 
+    /** Re-queues card registrations the server refused, e.g. after the conflict was fixed on the web. */
+    suspend fun retryFailedCards() = studentDao.retryFailedRfid(deviceSettings.schoolId.value)
+
     /** This device's students - see [findByRfid] for the scoping. */
     suspend fun getAll(): List<StudentEntity> = studentDao.getAllForSchool(deviceSettings.schoolId.value)
 
     /**
-     * Assigns [rfidUid] to [student]. Fails without writing anything if that
-     * UID is already assigned to a *different* student - re-assigning the
-     * same student to the same card they already have is a no-op success.
+     * Registers [rfidUid] as [student]'s one active card, on this device and
+     * (queued, see [com.muslimedu.attendance.sync.RfidCardSyncManager]) in
+     * the server's card registry. Never creates a student - the card is
+     * attached to the existing record.
+     *
+     * One card, one student: a card registered to someone else is refused
+     * (deactivate it there first). A student who already has a different
+     * card needs [replace] = true, which deactivates the old card - the
+     * lost/replaced card case.
      */
-    suspend fun assignRfidCard(student: StudentEntity, rfidUid: String): Result<Unit> {
-        val existingOwner = studentDao.findByRfid(rfidUid)
-        if (existingOwner != null && existingOwner.studentId != student.studentId) {
-            return Result.failure(Exception("This card is already assigned to ${existingOwner.name}"))
-        }
-        studentDao.updateRfidCardNumber(student.schoolId, student.studentId, rfidUid, System.currentTimeMillis())
+    suspend fun assignRfidCard(student: StudentEntity, rfidUid: String, replace: Boolean = false): CardAssignResult {
+        val uid = rfidUid.trim()
+        val owner = studentDao.findAnyByRfid(uid)
+        if (owner != null && owner.id != student.id) return CardAssignResult.OwnedByOther(owner)
+        val current = studentDao.findBySchoolAndStudentId(student.schoolId, student.studentId) ?: student
+        val oldUid = current.rfidCardNumber?.takeIf { it != uid }
+        if (oldUid != null && !replace) return CardAssignResult.NeedsReplace(oldUid)
+
+        studentDao.setRfidCardPending(student.schoolId, student.studentId, uid, System.currentTimeMillis())
         auditLogger.log(
             action = AuditLogger.ACTION_RFID_ASSIGNED,
             entityType = "student",
             entityId = student.studentId,
-            details = "rfidUid=$rfidUid",
+            details = "rfidUid=$uid" + (oldUid?.let { ", replaced=$it (deactivated)" } ?: ""),
         )
-        return Result.success(Unit)
+        return CardAssignResult.Assigned(replacedUid = oldUid)
     }
+
+    /** Deactivates [student]'s card here and (queued) on the server. The card can then be registered to someone else. */
+    suspend fun deactivateRfidCard(student: StudentEntity) {
+        val uid = student.rfidCardNumber ?: return
+        studentDao.setRfidCardPending(student.schoolId, student.studentId, null, System.currentTimeMillis())
+        auditLogger.log(
+            action = AuditLogger.ACTION_RFID_ASSIGNED,
+            entityType = "student",
+            entityId = student.studentId,
+            details = "rfidUid=$uid deactivated",
+        )
+    }
+
+    suspend fun reload(student: StudentEntity): StudentEntity? =
+        studentDao.findBySchoolAndStudentId(student.schoolId, student.studentId)
 
     /**
      * Adds a student by hand on this device. There's no backend endpoint to
@@ -94,56 +127,5 @@ class StudentRepository @Inject constructor(
             details = "name=$name, code=$code",
         )
         return Result.success(student)
-    }
-
-    suspend fun seedSampleDataIfEmpty() {
-        // Must run unconditionally, even when seeding itself is skipped
-        // below - an install where these rows were already seeded before
-        // isLocalOnly existed on them needs this to ever get corrected;
-        // seeding only ever happens once (see the early return right after).
-        studentDao.markLocalOnlyByCode(SAMPLE_STUDENT_CODES)
-        // Same reasoning: repairs any attendance row already stuck permanently
-        // failed from the school_id mismatch bug fixed in
-        // AttendanceRepository.recordScan() - see AttendanceDao.repairDemoAttendanceSchoolId()'s
-        // doc comment for the full story.
-        attendanceDao.repairDemoAttendanceSchoolId()
-
-        if (studentDao.count() > 0) return
-        val now = System.currentTimeMillis()
-        studentDao.insertAll(
-            listOf(
-                // isLocalOnly = true on all three: this is demo data with no
-                // corresponding row on the real backend at all (student_id
-                // 1/2/3 and code "STU00N" are fabricated, not synced from any
-                // real roster). Without this flag, SyncQueueManager had no
-                // way to tell these apart from a real synced student, so it
-                // dutifully tried to sync their attendance to the real
-                // server on every scan - and since no backend student is
-                // ever enrolled under a demo code like "STU001", every one
-                // of those calls failed, permanently, every time. That was
-                // the actual cause behind a persistent "Failed: 1" (or more)
-                // on the Admin Dashboard's sync status for anyone testing
-                // against this seed data before a real roster sync.
-                StudentEntity(
-                    schoolId = 1, studentId = 1, name = "Mohammed Ahmed", code = "STU001",
-                    sectionId = 5, sectionName = "Grade 5A", rfidCardNumber = "04:1A:2B:3C",
-                    isLocalOnly = true, createdAt = now, updatedAt = now,
-                ),
-                StudentEntity(
-                    schoolId = 1, studentId = 2, name = "Fatima Al-Zahra", code = "STU002",
-                    sectionId = 5, sectionName = "Grade 5A", rfidCardNumber = "04:5D:6E:7F",
-                    isLocalOnly = true, createdAt = now, updatedAt = now,
-                ),
-                StudentEntity(
-                    schoolId = 1, studentId = 3, name = "Yusuf Ibrahim", code = "STU003",
-                    sectionId = 5, sectionName = "Grade 5A", rfidCardNumber = "09:AA:BB:CC",
-                    isLocalOnly = true, createdAt = now, updatedAt = now,
-                ),
-            ),
-        )
-    }
-
-    companion object {
-        private val SAMPLE_STUDENT_CODES = listOf("STU001", "STU002", "STU003")
     }
 }

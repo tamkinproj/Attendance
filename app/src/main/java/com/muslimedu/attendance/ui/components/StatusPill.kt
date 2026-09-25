@@ -18,7 +18,7 @@ import androidx.compose.ui.unit.dp
 
 /**
  * Generalizes the colored pill badge pattern first built ad hoc for
- * [com.muslimedu.attendance.ui.screens.gate.GateAttendanceScreen]'s
+ * the gate screen's
  * in/out chips and [NetworkStatusBadge] - one reusable component instead of
  * each screen re-implementing its own tinted-`Surface` pill.
  */

@@ -56,13 +56,8 @@ class RfidViewModel @Inject constructor(
      */
     val isOnline: StateFlow<Boolean> = networkMonitor.isOnline
 
-    val canSimulate: Boolean get() = rfidManager.canSimulate
-
     init {
         rfidManager.register()
-        viewModelScope.launch {
-            studentRepository.seedSampleDataIfEmpty()
-        }
         viewModelScope.launch {
             rfidManager.events.collect { event -> handleEvent(event) }
         }
@@ -165,7 +160,4 @@ class RfidViewModel @Inject constructor(
     fun dismissResult() {
         _uiState.value = ScanUiState.Listening
     }
-
-    /** Debug-only: triggers [com.muslimedu.attendance.rfid.MockRfidReader]. No-op with a real reader. */
-    fun simulateScan(uid: String? = null) = rfidManager.simulateScan(uid)
 }

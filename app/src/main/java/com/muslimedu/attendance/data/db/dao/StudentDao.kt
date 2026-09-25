@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.muslimedu.attendance.data.db.entities.StudentEntity
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface StudentDao {
@@ -87,6 +88,43 @@ interface StudentDao {
 
     @Query("SELECT * FROM students WHERE school_id = :schoolId AND code = :code AND is_active = 1 LIMIT 1")
     suspend fun findByCodeInSchool(schoolId: Int, code: String): StudentEntity?
+
+    /**
+     * Sets (or with null, removes) a student's card and marks it for upload
+     * to the server's card registry.
+     */
+    @Query(
+        "UPDATE students SET rfid_card_number = :rfidUid, rfid_sync_status = 'pending', rfid_sync_error = NULL, " +
+            "updated_at = :updatedAt WHERE school_id = :schoolId AND student_id = :studentId",
+    )
+    suspend fun setRfidCardPending(schoolId: Int, studentId: Int, rfidUid: String?, updatedAt: Long)
+
+    /** Whoever holds [rfidUid] on this device, active or not - the unique index covers every row. */
+    @Query("SELECT * FROM students WHERE rfid_card_number = :rfidUid LIMIT 1")
+    suspend fun findAnyByRfid(rfidUid: String): StudentEntity?
+
+    @Query("UPDATE students SET rfid_card_number = NULL, updated_at = :updatedAt WHERE id = :id")
+    suspend fun clearRfid(id: Long, updatedAt: Long)
+
+    @Query("SELECT * FROM students WHERE school_id = :schoolId AND rfid_sync_status = 'pending' ORDER BY updated_at ASC")
+    suspend fun getRfidPending(schoolId: Int): List<StudentEntity>
+
+    /**
+     * Records an upload's result - but only if the card is still [sentUid]:
+     * an admin who changed it again while the upload was in flight has a
+     * newer pending change that must not be marked done.
+     */
+    @Query(
+        "UPDATE students SET rfid_sync_status = :status, rfid_sync_error = :error " +
+            "WHERE id = :id AND rfid_card_number IS :sentUid",
+    )
+    suspend fun updateRfidSyncState(id: Long, sentUid: String?, status: String, error: String?)
+
+    @Query("UPDATE students SET rfid_sync_status = 'pending', rfid_sync_error = NULL WHERE school_id = :schoolId AND rfid_sync_status = 'failed'")
+    suspend fun retryFailedRfid(schoolId: Int)
+
+    @Query("SELECT COUNT(*) FROM students WHERE school_id = :schoolId AND rfid_sync_status != 'synced'")
+    fun observeRfidUnsyncedCount(schoolId: Int): Flow<Int>
 
     @Query("UPDATE students SET school_id = :toSchoolId WHERE school_id = :fromSchoolId")
     suspend fun moveToSchool(fromSchoolId: Int, toSchoolId: Int)

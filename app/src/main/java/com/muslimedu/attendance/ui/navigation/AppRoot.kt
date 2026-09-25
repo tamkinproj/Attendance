@@ -40,12 +40,15 @@ import com.muslimedu.attendance.ui.screens.auth.LoginScreen
 import com.muslimedu.attendance.ui.screens.enrollment.FaceEnrollmentScreen
 import com.muslimedu.attendance.ui.screens.enrollment.PresetFaceTarget
 import com.muslimedu.attendance.ui.screens.enrollment.RfidEnrollmentScreen
-import com.muslimedu.attendance.ui.screens.gate.GateAttendanceScreen
+import com.muslimedu.attendance.ui.screens.gate.GateDashboardScreen
+import com.muslimedu.attendance.ui.screens.gate.GateHistoryScreen
+import com.muslimedu.attendance.ui.screens.gate.GateScanScreen
 import com.muslimedu.attendance.ui.screens.sync.InitialSyncScreen
 import com.muslimedu.attendance.ui.screens.sync.SyncScreen
 import com.muslimedu.attendance.viewmodel.AdminPinViewModel
 import com.muslimedu.attendance.viewmodel.AuthState
 import com.muslimedu.attendance.viewmodel.AuthViewModel
+import com.muslimedu.attendance.viewmodel.GateDirection
 import com.muslimedu.attendance.viewmodel.PresetRfidTarget
 
 /**
@@ -81,6 +84,9 @@ fun AppRoot(authViewModel: AuthViewModel = hiltViewModel()) {
  */
 private enum class Screen(val title: String, val requiresUnlock: Boolean) {
     Gate("Gate Attendance", false),
+    GateIn("RFID Coming In", false),
+    GateOut("RFID Going Out", false),
+    GateHistory("RFID Scan History", false),
     AdminPin("Admin", false),
     AdminHome("Admin", true),
     Students("Students", true),
@@ -119,7 +125,7 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
     }
 
     fun parentOf(current: Screen): Screen = when (current) {
-        Screen.Gate, Screen.AdminPin, Screen.AdminHome -> Screen.Gate
+        Screen.Gate, Screen.GateIn, Screen.GateOut, Screen.GateHistory, Screen.AdminPin, Screen.AdminHome -> Screen.Gate
         Screen.ResetPinLogin -> Screen.AdminPin
         else -> Screen.AdminHome
     }
@@ -137,12 +143,16 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
     // Defensive: nothing should route here while locked, but if it does, ask for the PIN.
     val shown = if (screen.requiresUnlock && !adminUnlocked) Screen.AdminPin else screen
 
-    BackHandler(enabled = shown != Screen.Gate) { navigate(parentOf(shown)) }
+    // The RFID scan screens draw their own header and handle back themselves
+    // (they ask before leaving with unsynced attendance).
+    val ownsChrome = shown == Screen.GateIn || shown == Screen.GateOut
+
+    BackHandler(enabled = shown != Screen.Gate && !ownsChrome) { navigate(parentOf(shown)) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
+            if (!ownsChrome) TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = MaterialTheme.colorScheme.onBackground,
@@ -188,7 +198,13 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
     ) { padding ->
         Box(modifier = Modifier.padding(padding)) {
             when (shown) {
-                Screen.Gate -> GateAttendanceScreen()
+                Screen.Gate -> GateDashboardScreen(
+                    onOpen = { direction -> navigate(if (direction == GateDirection.IN) Screen.GateIn else Screen.GateOut) },
+                    onHistory = { navigate(Screen.GateHistory) },
+                )
+                Screen.GateIn -> GateScanScreen(direction = GateDirection.IN, onClose = { navigate(Screen.Gate) })
+                Screen.GateOut -> GateScanScreen(direction = GateDirection.OUT, onClose = { navigate(Screen.Gate) })
+                Screen.GateHistory -> GateHistoryScreen()
                 Screen.AdminPin -> AdminPinScreen(
                     onUnlocked = {
                         adminUnlocked = true

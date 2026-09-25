@@ -34,7 +34,6 @@ import javax.inject.Singleton
 data class ReaderStatus(
     val connected: Boolean = false,
     val deviceName: String? = null,
-    val canSimulate: Boolean = false,
 )
 
 /**
@@ -59,11 +58,8 @@ class RfidManager @Inject constructor(
     private val _events = MutableSharedFlow<RfidEvent>(extraBufferCapacity = 16)
     val events: SharedFlow<RfidEvent> = _events.asSharedFlow()
 
-    private val _status = MutableStateFlow(ReaderStatus(canSimulate = readers.mock != null))
+    private val _status = MutableStateFlow(ReaderStatus())
     val status: StateFlow<ReaderStatus> = _status.asStateFlow()
-
-    /** True on debug builds, where a mock reader is merged in for the "Simulate Scan" button. */
-    val canSimulate: Boolean get() = readers.mock != null
 
     private var scanJob: Job? = null
     private var started = false
@@ -103,12 +99,6 @@ class RfidManager @Inject constructor(
     /** Forward from [android.app.Activity.dispatchKeyEvent]. Returns true if consumed. */
     fun dispatchKeyEvent(event: KeyEvent): Boolean = readers.keyboard.onKeyEvent(event)
 
-    /** Debug-only helper wired to a "Simulate Scan" button; no-op on release builds. */
-    fun simulateScan(uid: String? = null) {
-        val mock = readers.mock ?: return
-        if (uid != null) mock.simulateScan(uid) else mock.simulateScan()
-    }
-
     @Synchronized
     private fun restartScanning() {
         val previous = scanJob
@@ -127,7 +117,6 @@ class RfidManager @Inject constructor(
         _status.value = ReaderStatus(
             connected = device != null,
             deviceName = device?.let { it.productName ?: it.deviceName },
-            canSimulate = readers.mock != null,
         )
     }
 }
