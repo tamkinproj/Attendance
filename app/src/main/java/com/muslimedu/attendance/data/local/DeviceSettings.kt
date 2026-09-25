@@ -1,10 +1,14 @@
 package com.muslimedu.attendance.data.local
 
 import android.content.Context
+import com.muslimedu.attendance.data.repository.GateSchedule
+import com.muslimedu.attendance.data.repository.GateScheduleConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -51,15 +55,33 @@ class DeviceSettings @Inject constructor(
 
     /**
      * The admin's gate schedule: Coming In and Going Out scans per student per
-     * day (the same number each way). Null until set - the gate can't be
-     * used before that. See [com.muslimedu.attendance.data.repository.GateSchedule].
+     * day (the same number each way) and when each one opens. Null until set -
+     * the gate can't be used before that. See [GateSchedule].
      */
-    private val _gateScansPerDay = MutableStateFlow(prefs.getInt(KEY_GATE_SCANS_PER_DAY, 0).takeIf { it > 0 })
-    val gateScansPerDay: StateFlow<Int?> = _gateScansPerDay.asStateFlow()
+    private val _gateSchedule = MutableStateFlow(readGateSchedule())
+    val gateSchedule: StateFlow<GateScheduleConfig?> = _gateSchedule.asStateFlow()
 
-    fun setGateScansPerDay(perDay: Int) {
-        prefs.edit().putInt(KEY_GATE_SCANS_PER_DAY, perDay).apply()
-        _gateScansPerDay.value = perDay
+    fun setGateSchedule(config: GateScheduleConfig) {
+        prefs.edit()
+            .putInt(KEY_GATE_SCANS_PER_DAY, config.perDay)
+            .putString(KEY_GATE_IN_TIMES, config.inTimes.joinToString(",") { it.format(HH_MM) })
+            .putString(KEY_GATE_OUT_TIMES, config.outTimes.joinToString(",") { it.format(HH_MM) })
+            .apply()
+        _gateSchedule.value = config
+    }
+
+    /** Times missing or unreadable (a schedule saved before they existed) fall back to the defaults for that count. */
+    private fun readGateSchedule(): GateScheduleConfig? {
+        val perDay = prefs.getInt(KEY_GATE_SCANS_PER_DAY, 0).takeIf { it > 0 } ?: return null
+        fun times(key: String) = prefs.getString(key, null)?.split(',')
+            ?.mapNotNull { runCatching { LocalTime.parse(it.trim(), HH_MM) }.getOrNull() }
+        val inTimes = times(KEY_GATE_IN_TIMES)
+        val outTimes = times(KEY_GATE_OUT_TIMES)
+        if (inTimes != null && outTimes != null && inTimes.size == perDay && GateSchedule.timesInOrder(inTimes, outTimes)) {
+            return GateScheduleConfig(perDay, inTimes, outTimes)
+        }
+        val (defaultIn, defaultOut) = GateSchedule.defaultTimes(perDay)
+        return GateScheduleConfig(perDay, defaultIn, defaultOut)
     }
 
     var lastStudentDownloadAt: Long?
@@ -75,5 +97,8 @@ class DeviceSettings @Inject constructor(
         private const val KEY_LAST_STUDENT_DOWNLOAD = "last_student_download_at"
         private const val KEY_POST_LOGIN_SYNC = "post_login_sync_pending"
         private const val KEY_GATE_SCANS_PER_DAY = "gate_scans_per_day"
+        private const val KEY_GATE_IN_TIMES = "gate_in_times"
+        private const val KEY_GATE_OUT_TIMES = "gate_out_times"
+        private val HH_MM: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
     }
 }

@@ -5,18 +5,22 @@ import androidx.lifecycle.viewModelScope
 import com.muslimedu.attendance.data.db.entities.GateScanEntity
 import com.muslimedu.attendance.data.local.DeviceSettings
 import com.muslimedu.attendance.data.repository.GateAttendanceRepository
+import com.muslimedu.attendance.data.repository.GateScheduleConfig
 import com.muslimedu.attendance.rfid.RfidManager
 import com.muslimedu.attendance.sync.GateSyncManager
 import com.muslimedu.attendance.sync.GateSyncOutcome
 import com.muslimedu.attendance.util.NetworkMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.LocalTime
 import javax.inject.Inject
 
 /** Today's face-confirmed attendance at this gate, by each student's latest direction. */
@@ -36,8 +40,16 @@ class GateDashboardViewModel @Inject constructor(
     deviceSettings: DeviceSettings,
 ) : ViewModel() {
 
-    /** Coming In and Going Out scans per student per day; null until an admin sets it - the gate is blocked until then. */
-    val scansPerDay: StateFlow<Int?> = deviceSettings.gateScansPerDay
+    /** The admin's gate schedule; null until set - the gate is blocked until then. */
+    val schedule: StateFlow<GateScheduleConfig?> = deviceSettings.gateSchedule
+
+    /** The time of day, refreshed every 20s, so a direction unlocks on the dashboard at its opening time by itself. */
+    val now: StateFlow<LocalTime> = flow {
+        while (true) {
+            emit(LocalTime.now())
+            delay(20_000)
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LocalTime.now())
 
     val today: StateFlow<GateTodayStats> = gateAttendanceRepository.observeToday()
         .map(::toStats)
