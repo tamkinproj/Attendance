@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.muslimedu.attendance.data.db.entities.GateScanEntity
 import com.muslimedu.attendance.ui.components.InitialsAvatar
+import com.muslimedu.attendance.ui.theme.AccentBlue
 import com.muslimedu.attendance.ui.theme.AccentGold
 import com.muslimedu.attendance.ui.theme.AccentRed
 import com.muslimedu.attendance.ui.theme.AccentSlate
@@ -44,9 +45,9 @@ internal fun displayTime(hhmm: String): String =
 internal fun displayDate(isoDate: String): String =
     runCatching { LocalDate.parse(isoDate).format(DateTimeFormatter.ofPattern("EEE, d MMM yyyy")) }.getOrDefault(isoDate)
 
-/** Teal for coming in, amber for going out - used everywhere a direction is shown. */
+/** Teal for coming in, blue for going out - used everywhere a direction is shown. */
 internal fun directionColor(direction: String): Color =
-    if (direction == GateScanEntity.DIRECTION_IN) BrandPrimary else AccentGold
+    if (direction == GateScanEntity.DIRECTION_IN) BrandPrimary else AccentBlue
 
 internal fun GateDirection.color(): Color = directionColor(apiValue)
 

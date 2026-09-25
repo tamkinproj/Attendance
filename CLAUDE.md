@@ -195,9 +195,16 @@ but the RFID reader, camera and migration need real hardware - especially
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
   teal - used for the logo, gradients, big icons. It's only ~3.4:1 on white,
   so buttons/text use `BrandPrimary` #267A70 (same hue, 5.1:1). Background is
-  mint #EEF6F4. Status accents are readable as text on white: amber
-  `AccentGold` (Out/warnings), coral `AccentRed` (errors), `AccentSlate`
-  (info); In/success is the brand teal (`AccentSuccess`).
+  a near-white #F5F8F8. Status accents are readable as text on white: blue
+  `AccentBlue` #2F63C8 (Going Out), amber `AccentGold` (pending/warnings),
+  coral `AccentRed` (errors), `AccentSlate` (info); In/success is the brand
+  teal (`AccentSuccess`).
+- Gate dashboard (redesigned from the user's mockup): own header (logo tile,
+  large "Gate Attendance", admin name, round admin button - no app bar),
+  soft tinted summary card with dotted stat labels, tinted Coming In
+  (teal) / Going Out (blue) cards, sync card with a Synced / Sync now pill,
+  empty-history illustration. Tints are the accent composited over the
+  surface color, so they also work in the dark scheme.
 - Tokens were renamed semantically (`BrandPurple*` -> `BrandPrimary*`,
   `AccentTeal*` -> `AccentSuccess*`); hidden classroom screens use the same
   tokens so they follow the theme too.

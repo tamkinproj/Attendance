@@ -2,10 +2,8 @@ package com.muslimedu.attendance.ui.navigation
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -29,7 +27,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.muslimedu.attendance.data.remote.dto.UserDto
-import com.muslimedu.attendance.ui.components.BrandLogo
 import com.muslimedu.attendance.ui.screens.SplashScreen
 import com.muslimedu.attendance.ui.screens.admin.AdminPinScreen
 import com.muslimedu.attendance.ui.screens.admin.AuditLogScreen
@@ -143,11 +140,12 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
     // Defensive: nothing should route here while locked, but if it does, ask for the PIN.
     val shown = if (screen.requiresUnlock && !adminUnlocked) Screen.AdminPin else screen
 
-    // The RFID scan screens draw their own header and handle back themselves
-    // (they ask before leaving with unsynced attendance).
-    val ownsChrome = shown == Screen.GateIn || shown == Screen.GateOut
+    // These draw their own header: the dashboard has its large title and
+    // admin button, and the RFID scan screens handle back themselves (they
+    // ask before leaving with unsynced attendance).
+    val ownsChrome = shown == Screen.Gate || shown == Screen.GateIn || shown == Screen.GateOut
 
-    BackHandler(enabled = shown != Screen.Gate && !ownsChrome) { navigate(parentOf(shown)) }
+    BackHandler(enabled = !ownsChrome) { navigate(parentOf(shown)) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -157,40 +155,17 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
                     containerColor = MaterialTheme.colorScheme.background,
                     titleContentColor = MaterialTheme.colorScheme.onBackground,
                 ),
-                title = {
-                    if (shown == Screen.Gate) {
-                        Column {
-                            Text(shown.title, fontWeight = FontWeight.Bold)
-                            Text(
-                                user.name,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    } else {
-                        Text(shown.title, fontWeight = FontWeight.SemiBold)
-                    }
-                },
+                title = { Text(shown.title, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
-                    if (shown == Screen.Gate) {
-                        BrandLogo(size = 32.dp, modifier = Modifier.padding(start = 12.dp, end = 4.dp))
-                    } else {
-                        IconButton(onClick = { navigate(parentOf(shown)) }) {
-                            Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
-                        }
+                    IconButton(onClick = { navigate(parentOf(shown)) }) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
-                    when (shown) {
-                        Screen.Gate -> IconButton(onClick = {
-                            navigate(if (adminUnlocked) Screen.AdminHome else Screen.AdminPin)
-                        }) {
-                            Icon(Icons.Filled.AdminPanelSettings, contentDescription = "Admin", tint = MaterialTheme.colorScheme.primary)
-                        }
-                        Screen.AdminHome -> IconButton(onClick = { navigate(Screen.Gate) }) {
+                    if (shown == Screen.AdminHome) {
+                        IconButton(onClick = { navigate(Screen.Gate) }) {
                             Icon(Icons.Filled.Lock, contentDescription = "Lock admin")
                         }
-                        else -> Unit
                     }
                 },
             )
@@ -199,6 +174,8 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
         Box(modifier = Modifier.padding(padding)) {
             when (shown) {
                 Screen.Gate -> GateDashboardScreen(
+                    adminName = user.name,
+                    onAdmin = { navigate(if (adminUnlocked) Screen.AdminHome else Screen.AdminPin) },
                     onOpen = { direction -> navigate(if (direction == GateDirection.IN) Screen.GateIn else Screen.GateOut) },
                     onHistory = { navigate(Screen.GateHistory) },
                 )
