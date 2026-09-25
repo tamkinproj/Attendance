@@ -27,7 +27,8 @@ class SyncViewModel @Inject constructor(
     private val deviceSettings: DeviceSettings,
 ) : ViewModel() {
 
-    val pendingCount: StateFlow<Int> = gateAttendanceRepository.observeCount(GateScanEntity.SYNC_PENDING)
+    /** Face-confirmed attendance not yet on the server. */
+    val pendingCount: StateFlow<Int> = gateAttendanceRepository.observeUnsyncedAttendanceCount()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
     val syncedCount: StateFlow<Int> = gateAttendanceRepository.observeCount(GateScanEntity.SYNC_SYNCED)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
@@ -63,6 +64,9 @@ class SyncViewModel @Inject constructor(
                     append("Uploaded ${outcome.uploaded}")
                     if (outcome.rejected > 0) append(", ${outcome.rejected} rejected by server")
                     outcome.stoppedReason?.let { append(". Stopped: $it") }
+                    if (outcome.cardsSynced > 0) append(". ${outcome.cardsSynced} card(s) registered")
+                    if (outcome.cardsFailed > 0) append(". ${outcome.cardsFailed} card(s) refused - see Students")
+                    outcome.cardsStoppedReason?.let { append(". Cards: $it") }
                 }
             }
         }
@@ -71,6 +75,7 @@ class SyncViewModel @Inject constructor(
     fun retryFailed() {
         viewModelScope.launch {
             gateAttendanceRepository.retryFailed()
+            studentRepository.retryFailedCards()
             uploadNow()
         }
     }

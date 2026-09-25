@@ -9,11 +9,13 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 
 /**
- * Background reliability backstop for [SyncQueueManager]. The opportunistic
- * flush right after a scan handles the common "online right now" case; this
- * periodic job (scheduled from [com.muslimedu.attendance.App]) makes sure
- * anything that missed that - app was killed, was offline, etc. - still
- * gets synced eventually without the app needing to be in the foreground.
+ * Background sync. The upload right after a scan handles the common "online
+ * right now" case; this job makes sure anything that missed it - app was
+ * killed, was offline, etc. - still gets synced without the app needing to
+ * be in the foreground. Runs every 15 minutes (scheduled from
+ * [com.muslimedu.attendance.App]) and once as soon as the network returns
+ * after a record is saved offline ([GateSyncScheduler]). [GateSyncManager]
+ * includes card registrations.
  */
 @HiltWorker
 class SyncWorker @AssistedInject constructor(

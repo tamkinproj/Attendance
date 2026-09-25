@@ -45,4 +45,20 @@ data class StudentEntity(
     @ColumnInfo(name = "last_synced_at") val lastSyncedAt: Long? = null,
     @ColumnInfo(name = "created_at") val createdAt: Long,
     @ColumnInfo(name = "updated_at") val updatedAt: Long,
-)
+    /**
+     * Whether [rfidCardNumber] (a card, or null for "no card") still has to
+     * reach the server's card registry - [RFID_PENDING], [RFID_SYNCED], or
+     * [RFID_FAILED] with the reason in [rfidSyncError] (e.g. the card is
+     * registered to another student there). A download never overwrites a
+     * pending or failed card: the admin's change on this device wins until
+     * it has been sent.
+     */
+    @ColumnInfo(name = "rfid_sync_status") val rfidSyncStatus: String = RFID_SYNCED,
+    @ColumnInfo(name = "rfid_sync_error") val rfidSyncError: String? = null,
+) {
+    companion object {
+        const val RFID_PENDING = "pending"
+        const val RFID_SYNCED = "synced"
+        const val RFID_FAILED = "failed"
+    }
+}

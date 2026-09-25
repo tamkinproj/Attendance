@@ -6,8 +6,17 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
- * One gate in/out event, recorded on-device first and uploaded later to
- * `/admin_gate_attendance_scan` by [com.muslimedu.attendance.sync.GateSyncManager].
+ * One gate in/out attempt, recorded on-device first and uploaded later by
+ * [com.muslimedu.attendance.sync.GateSyncManager].
+ *
+ * Every row starts from a real RFID read ([rfidUid], [rfidVerified]) that
+ * identified a student on this device. [outcome] says what the face check
+ * made of it: [OUTCOME_RECORDED] (face confirmed - this is attendance,
+ * uploaded to `/admin_gate_attendance_scan`) or [OUTCOME_REJECTED] (face not
+ * confirmed or not enrolled - NOT attendance, kept for the history and
+ * uploaded to `/admin_gate_rejected_scan` so the web admin can see card
+ * sharing attempts). [eventId] is a per-row UUID the server uses to ignore
+ * an upload it has already stored.
  *
  * Keyed to the student by [studentCode] only - the backend resolves gate
  * scans by `code` across the whole school, so no server student id is
@@ -47,12 +56,28 @@ data class GateScanEntity(
     @ColumnInfo(name = "last_sync_at") val lastSyncAt: Long? = null,
     @ColumnInfo(name = "server_attendance_id") val serverAttendanceId: Int? = null,
     @ColumnInfo(name = "error_message") val errorMessage: String? = null,
+    // v8 columns. No defaultValue here on purpose: the migration's SQL
+    // DEFAULTs back-fill old rows, and Room only compares defaults the
+    // entity declares.
+    /** The student's server id (negative for one added by hand on this device). Display/code is [studentCode]. */
+    @ColumnInfo(name = "student_id") val studentId: Int? = null,
+    @ColumnInfo(name = "section_name") val sectionName: String? = null,
+    @ColumnInfo(name = "rfid_uid") val rfidUid: String? = null,
+    @ColumnInfo(name = "rfid_verified") val rfidVerified: Boolean = false,
+    val outcome: String = OUTCOME_RECORDED,
+    @ColumnInfo(name = "failure_reason") val failureReason: String? = null,
+    @ColumnInfo(name = "event_id") val eventId: String = "",
 ) {
+    /** Attendance only when both checks passed - what a teacher can sync into class attendance. */
+    val isVerifiedAttendance: Boolean get() = outcome == OUTCOME_RECORDED && rfidVerified && verifiedByFace
+
     companion object {
         const val SYNC_PENDING = "pending"
         const val SYNC_SYNCED = "synced"
         const val SYNC_FAILED = "failed"
         const val DIRECTION_IN = "in"
         const val DIRECTION_OUT = "out"
+        const val OUTCOME_RECORDED = "recorded"
+        const val OUTCOME_REJECTED = "rejected"
     }
 }

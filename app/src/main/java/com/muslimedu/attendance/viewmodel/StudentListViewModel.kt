@@ -8,6 +8,8 @@ import com.muslimedu.attendance.data.local.StudentPhotoCache
 import com.muslimedu.attendance.data.repository.FaceTemplateRepository
 import com.muslimedu.attendance.data.repository.StudentRepository
 import com.muslimedu.attendance.data.local.DeviceSettings
+import com.muslimedu.attendance.sync.GateSyncScheduler
+import com.muslimedu.attendance.sync.RfidCardSyncManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +32,8 @@ class StudentListViewModel @Inject constructor(
     private val faceTemplateRepository: FaceTemplateRepository,
     private val photoCache: StudentPhotoCache,
     private val deviceSettings: DeviceSettings,
+    private val rfidCardSyncManager: RfidCardSyncManager,
+    private val gateSyncScheduler: GateSyncScheduler,
 ) : ViewModel() {
 
     private val _rows = MutableStateFlow<List<StudentRow>>(emptyList())
@@ -56,6 +60,20 @@ class StudentListViewModel @Inject constructor(
             _rows.value = students.map { student ->
                 StudentRow(student, hasFace = (student.schoolId to student.studentId) in enrolledKeys)
             }
+        }
+    }
+
+    /**
+     * Deactivates the student's card (lost, broken, or moving to someone
+     * else) - here at once, on the server as soon as it can be sent.
+     */
+    fun deactivateCard(student: StudentEntity) {
+        viewModelScope.launch {
+            studentRepository.deactivateRfidCard(student)
+            refresh()
+            gateSyncScheduler.syncWhenOnline()
+            rfidCardSyncManager.flush()
+            refresh()
         }
     }
 

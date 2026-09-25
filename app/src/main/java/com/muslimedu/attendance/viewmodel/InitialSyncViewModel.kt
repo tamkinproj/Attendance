@@ -2,7 +2,6 @@ package com.muslimedu.attendance.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.muslimedu.attendance.data.db.entities.GateScanEntity
 import com.muslimedu.attendance.data.local.DeviceSettings
 import com.muslimedu.attendance.data.repository.GateAttendanceRepository
 import com.muslimedu.attendance.data.repository.StudentDownloadRepository
@@ -13,7 +12,6 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -76,20 +74,24 @@ class InitialSyncViewModel @Inject constructor(
         deviceSettings.setPostLoginSyncPending(false)
     }
 
+    /** Always runs, even with no attendance waiting - card registrations made on this device go up here too. */
     private suspend fun upload(): SyncStepState {
-        val waiting = gateAttendanceRepository.observeCount(GateScanEntity.SYNC_PENDING).first()
-        if (waiting == 0) return SyncStepState(SyncStepStatus.Done, "Nothing waiting to upload")
+        val waiting = gateAttendanceRepository.unsyncedAttendanceCount()
         return when (val outcome = gateSyncManager.flush()) {
             GateSyncOutcome.NotSignedIn -> SyncStepState(SyncStepStatus.Failed, "Not signed in")
             is GateSyncOutcome.Finished -> {
                 val summary = buildString {
-                    append("${outcome.uploaded} of $waiting uploaded")
+                    append(if (waiting == 0) "No attendance waiting" else "${outcome.uploaded} of $waiting uploaded")
                     if (outcome.rejected > 0) append(", ${outcome.rejected} rejected")
+                    if (outcome.cardsSynced > 0) append(", ${outcome.cardsSynced} card(s) registered")
+                    if (outcome.cardsFailed > 0) append(", ${outcome.cardsFailed} card(s) refused - see Admin > Students")
                 }
-                if (outcome.stoppedReason != null) {
-                    SyncStepState(SyncStepStatus.Failed, "$summary - ${outcome.stoppedReason}")
-                } else {
-                    SyncStepState(SyncStepStatus.Done, summary)
+                when {
+                    outcome.stoppedReason == null -> SyncStepState(SyncStepStatus.Done, summary)
+                    // Not the device's fault and not fixable from here -
+                    // same "not set up yet" treatment as the student download.
+                    outcome.endpointMissing -> SyncStepState(SyncStepStatus.Skipped, "$summary - ${outcome.stoppedReason}")
+                    else -> SyncStepState(SyncStepStatus.Failed, "$summary - ${outcome.stoppedReason}")
                 }
             }
         }

@@ -19,26 +19,25 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.muslimedu.attendance.data.db.entities.StudentEntity
 import com.muslimedu.attendance.ui.components.StepIndicator
+import com.muslimedu.attendance.ui.theme.AccentGold
 import com.muslimedu.attendance.ui.theme.AccentRed
 import com.muslimedu.attendance.ui.theme.AccentSuccess
 import com.muslimedu.attendance.ui.theme.BrandPrimary
@@ -72,7 +71,7 @@ fun RfidEnrollmentScreen(
     val currentStep = when (uiState) {
         is RfidEnrollmentUiState.SelectingStudent -> 1
         is RfidEnrollmentUiState.Listening -> 2
-        is RfidEnrollmentUiState.Success, is RfidEnrollmentUiState.Failed -> 3
+        is RfidEnrollmentUiState.ConfirmReplace, is RfidEnrollmentUiState.Success, is RfidEnrollmentUiState.Failed -> 3
     }
 
     Surface(modifier = Modifier.fillMaxSize()) {
@@ -101,15 +100,19 @@ fun RfidEnrollmentScreen(
                         loadPhoto = viewModel::loadPhoto,
                     )
                 }
-                is RfidEnrollmentUiState.Listening -> ListeningContent(
-                    student = state.student,
-                    canSimulate = viewModel.canSimulate,
-                    onSimulateScan = viewModel::simulateScan,
-                    onManualAssign = { uid -> viewModel.assignManually(state.student, uid) },
+                is RfidEnrollmentUiState.Listening -> ListeningContent(student = state.student)
+                is RfidEnrollmentUiState.ConfirmReplace -> ConfirmReplaceContent(
+                    state = state,
+                    onReplace = viewModel::confirmReplace,
+                    onCancel = viewModel::reset,
                 )
                 is RfidEnrollmentUiState.Success -> ResultContent(
-                    title = "Card Assigned",
-                    message = "${state.student.name} -> ${state.uid}",
+                    title = "Card Registered",
+                    message = buildString {
+                        append("${state.student.name} (${state.student.code}) -> card ${state.uid}")
+                        state.replacedUid?.let { append("\nOld card $it deactivated") }
+                        append("\n${state.serverNote}")
+                    },
                     isError = false,
                     onDone = viewModel::reset,
                 )
@@ -124,15 +127,9 @@ fun RfidEnrollmentScreen(
     }
 }
 
+/** Waits for the physical card - there is no typed-in UID, so every registered card really exists. */
 @Composable
-private fun ListeningContent(
-    student: StudentEntity,
-    canSimulate: Boolean,
-    onSimulateScan: () -> Unit,
-    onManualAssign: (String) -> Unit,
-) {
-    var manualUid by remember { mutableStateOf("") }
-
+private fun ListeningContent(student: StudentEntity) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -144,31 +141,50 @@ private fun ListeningContent(
         Text(
             text = "Tap ${student.name}'s card on the reader",
             style = MaterialTheme.typography.titleLarge,
+            textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 16.dp),
         )
-
-        if (canSimulate) {
-            Button(onClick = onSimulateScan, modifier = Modifier.padding(top = 24.dp)) {
-                Text("Simulate Scan (debug)")
-            }
-        }
-
-        Text(text = "Or enter the UID manually", modifier = Modifier.padding(top = 24.dp))
-        OutlinedTextField(
-            value = manualUid,
-            onValueChange = { manualUid = it },
-            label = { Text("Card UID") },
-            singleLine = true,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp),
+        Text(
+            text = "Student ID ${student.code}" + (student.sectionName?.let { " · $it" } ?: ""),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp),
         )
-        Button(
-            onClick = { if (manualUid.isNotBlank()) onManualAssign(manualUid.trim()) },
-            enabled = manualUid.isNotBlank(),
-            modifier = Modifier.padding(top = 8.dp),
-        ) {
-            Text("Assign")
+        student.rfidCardNumber?.let { current ->
+            Text(
+                text = "Current card: $current. Tapping a different card replaces it (you'll be asked to confirm).",
+                style = MaterialTheme.typography.bodySmall,
+                color = AccentGold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 16.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ConfirmReplaceContent(
+    state: RfidEnrollmentUiState.ConfirmReplace,
+    onReplace: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text("Replace card?", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(
+            text = "${state.student.name} already has card ${state.oldUid}. Registering card ${state.newUid} " +
+                "deactivates the old one - it will no longer work at the gate.",
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+        Row(modifier = Modifier.padding(top = 24.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedButton(onClick = onCancel) { Text("Cancel") }
+            Button(onClick = onReplace) { Text("Replace card") }
         }
     }
 }
@@ -241,7 +257,7 @@ internal fun ResultContent(
         verticalArrangement = Arrangement.Center,
     ) {
         Text(title, style = MaterialTheme.typography.titleLarge)
-        Text(text = message, color = if (isError) AccentRed else AccentSuccess)
+        Text(text = message, color = if (isError) AccentRed else AccentSuccess, textAlign = TextAlign.Center)
         Button(onClick = onDone, modifier = Modifier.padding(top = 24.dp)) {
             Text(buttonLabel)
         }

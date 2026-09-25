@@ -15,6 +15,8 @@ import com.muslimedu.attendance.data.remote.dto.GateAttendanceScanData
 import com.muslimedu.attendance.data.remote.dto.GateAttendanceScanRequest
 import com.muslimedu.attendance.data.remote.dto.GateAttendanceTodayData
 import com.muslimedu.attendance.data.remote.dto.GateAttendanceTodayRequest
+import com.muslimedu.attendance.data.remote.dto.GateRejectedScanData
+import com.muslimedu.attendance.data.remote.dto.GateRejectedScanRequest
 import com.muslimedu.attendance.data.remote.dto.GateStudentsData
 import com.muslimedu.attendance.data.remote.dto.GateStudentsRequest
 import com.muslimedu.attendance.data.remote.dto.LoginData
@@ -23,6 +25,8 @@ import com.muslimedu.attendance.data.remote.dto.MeData
 import com.muslimedu.attendance.data.remote.dto.RefreshTokenData
 import com.muslimedu.attendance.data.remote.dto.RosterData
 import com.muslimedu.attendance.data.remote.dto.RosterRequest
+import com.muslimedu.attendance.data.remote.dto.StudentRfidSetData
+import com.muslimedu.attendance.data.remote.dto.StudentRfidSetRequest
 import com.muslimedu.attendance.data.remote.dto.TeacherClassesData
 import retrofit2.http.Body
 import retrofit2.http.POST
@@ -103,4 +107,12 @@ interface ApiService {
     /** Every active student in the admin's school, with `code` - proposed endpoint, see [GateStudentsRequest]. */
     @POST("admin_gate_students")
     suspend fun adminGateStudents(@Body request: GateStudentsRequest): ApiEnvelope<GateStudentsData>
+
+    /** A card read whose face check failed - logged by the server, never attendance. See [GateRejectedScanRequest]. */
+    @POST("admin_gate_rejected_scan")
+    suspend fun adminGateRejectedScan(@Body request: GateRejectedScanRequest): ApiEnvelope<GateRejectedScanData>
+
+    /** The server's RFID card registry - assign/replace or remove a student's card. See [StudentRfidSetRequest]. */
+    @POST("admin_student_rfid_set")
+    suspend fun adminStudentRfidSet(@Body request: StudentRfidSetRequest): ApiEnvelope<StudentRfidSetData>
 }

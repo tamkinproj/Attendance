@@ -13,7 +13,7 @@ This is a native Android Kotlin application for recording student attendance usi
 The app is **gate in/out attendance only**. Classroom attendance is done on
 the web app.
 
-**Entry flow (current): admin sign-in -> sync -> gate.** Nothing works until
+**Entry flow (current): admin sign-in -> sync -> gate dashboard.** Nothing works until
 a school admin (role `admin` only - no teachers, students or other roles)
 signs in. Each fresh sign-in is followed by `InitialSyncScreen` (upload this
 device's pending scans, then download the student list; the admin can retry
@@ -35,10 +35,12 @@ the repo if it's ever needed again.
 - **Student -> `code`.** The backend already resolves gate scans by the
   student's `code` across the whole school, so a gate scan is stored locally
   as `code + direction + date + time` (`GateScanEntity`, table `gate_scans`)
-  and needs no server student id. RFID card -> student stays device-local
-  (the backend has no RFID field). A student added by hand syncs fine as
-  long as their real school code is used; a wrong code is rejected by the
-  server at upload time and shows up on the Sync screen.
+  and needs no server student id. RFID card -> student is kept on the device
+  for offline lookup and mirrored to the server's card registry
+  (`student_rfid_cards`, by `code`) once the backend patch is live. A
+  student added by hand syncs fine as long as their real school code is
+  used; a wrong code is rejected by the server at upload time and shows up
+  on the Sync screen.
 - **Account -> device school.** Scans belong to the device, not to a login.
   `DeviceSettings.schoolId` starts unbound (`0`). The first successful admin
   sign-in links the device to that admin's school (`DeviceBindingRepository`),
@@ -46,22 +48,77 @@ the repo if it's ever needed again.
   templates, audit log) onto the real school id in one transaction. After
   that, sign-in from any other school is refused, so one school's offline
   scans can never be uploaded into another's.
-- **Subject/class -> not needed.** The backend files gate scans under its
-  `GATE_SUBJECT_ID` sentinel and looks up class/section from enrollment.
+- **Subject/class -> not needed at the gate.** The backend files gate scans
+  under its `GATE_SUBJECT_ID` sentinel and looks up class/section from
+  enrollment. Class attendance only gets gate data when a teacher syncs
+  verified records into it (web > Take Attendance > Gate Records).
 
-### Flow
-- App opens on `GateAttendanceScreen`. Card tap or typed code -> local
-  lookup -> if that student has a face template on this device, the
-  `LiveFaceCaptureView` face check must pass first (no manual override) ->
-  saved to `gate_scans` -> best-effort upload. Same student + same direction
-  within 60s counts as a double tap, not a new event. A typed code not on the
-  device is still recorded (the server validates it on upload).
-- `GateSyncManager` uploads pending scans **oldest first** and stops at the
-  first one that fails for a temporary reason (offline, 5xx, backing off) so
-  a later "out" never reaches the server before its "in". 404/422 -> marked
-  rejected and skipped. 401/403 -> stop, leave pending. Offline is never
-  counted as a failed attempt. Runs after each scan, after sign-in, from the
-  Sync screen, and every 15 min from `SyncWorker`.
+### Flow: RFID + face confirmation gate
+RFID identifies the student -> the **existing** face check confirms it's
+them -> only then is attendance recorded. Nothing here is a second face
+system: step 2 is `LiveFaceCaptureView` (auto-capture) +
+`FaceTemplateRepository.verify` (match against the template enrolled on
+this device), the same pieces the old gate screen used.
+
+- **Gate dashboard** (`GateDashboardScreen`, the home screen, no PIN):
+  Coming In / Going Out buttons, sync status (pending count, last synced,
+  Sync now), recent RFID records, "View all" -> `GateHistoryScreen` (by day,
+  filters All / Coming In / Going Out / Face failed). Scanning never starts
+  here.
+- **RFID Coming In / Going Out** (`GateScanScreen` + `GateScanViewModel`,
+  one direction per visit, own header + back handling): "Tap your RFID
+  card/tag on the reader." -> card looked up on this device -> Step 1 card
+  (name, Student ID = `code`, section, RFID Verified) -> Step 2 face check.
+  - Match -> "Attendance Recorded Successfully" (name, ID, section,
+    direction, RFID ✓ Face ✓, date, time), back to ready after 3s.
+  - No match / no face / 30s without a face -> "Face Confirmation Failed -
+    Attendance was not recorded", Try again / Cancel. Saved as a
+    **rejected** row (never attendance).
+  - Student has no face enrolled -> refused the same way (rejected row).
+    The card alone never records attendance - that's what stops card
+    sharing. Unknown card -> "Card not registered", nothing saved.
+  - Same student + direction within 60s (a recorded one) -> "Already
+    recorded", no face step, nothing new saved.
+  - The view model outlives the screen, so it ignores the reader unless
+    the screen is open (`enter()`/`exit()`) - a tap on Assign Card must not
+    record gate attendance.
+  - Back with face-confirmed records not yet synced -> dialog "Unsaved
+    Attendance Records": **Save & Sync** (upload now; if offline they stay
+    Pending Sync and go up automatically), **Leave Without Syncing**,
+    **Cancel**. Records are saved on the device the moment they're
+    confirmed, so "leave" never discards anything - the button says
+    "Without Syncing" for that reason (the request said "Without Saving").
+- No simulation anywhere: `MockRfidReader`, Simulate Scan, typed student
+  codes on the gate, typed card UIDs on Assign Card, and the three demo
+  students with made-up cards (purged by `MIGRATION_7_8`) are gone. Card
+  UIDs are compared in one form, trimmed + upper-case (`normalizeRfidUid`;
+  the server's `StudentRfidCard::normalizeUid` does the same).
+- **Records** (`gate_scans`, v8 via `MIGRATION_7_8`): student code/id,
+  section, card UID, `rfid_verified`, `verified_by_face`, score, `outcome`
+  (`recorded` | `rejected`), reason, and a per-row `event_id` UUID. Only
+  `recorded` + RFID + face = verified attendance (`isVerifiedAttendance`).
+- **Sync** (`GateSyncManager`): 1) card registrations
+  (`RfidCardSyncManager` -> `admin_student_rfid_set`), 2) attendance ->
+  `admin_gate_attendance_scan` **oldest first**, stopping at the first
+  temporary failure so a later "out" never reaches the server before its
+  "in" (404/422 -> failed and skipped; 401/403 -> stop; 405/501 -> "not set
+  up on the server yet", kept pending; offline is never counted as an
+  attempt), 3) failed face checks -> `admin_gate_rejected_scan`,
+  best-effort, after attendance so they can never hold it up. The event id
+  makes every upload idempotent on the server. Runs after each record, on
+  Sync now / Save & Sync, after sign-in, every 15 min, and **as soon as the
+  network returns** (`GateSyncScheduler`: a one-off `SyncWorker` with a
+  CONNECTED constraint, queued on every record). The UI shows Pending Sync
+  -> Synchronizing -> Synced.
+- **RFID registration** (Admin > Assign RFID Card / Students, PIN-locked):
+  attaches a physically read card to an existing student - never creates
+  one. A card registered to another student is refused (deactivate it
+  there first); a student who already has a card is asked "Replace card?"
+  (the old one is deactivated). Students list: card number + sync state,
+  and Replace / Deactivate. Every change goes to the server registry
+  (pending until sent; a refusal shows its reason). The student download
+  applies the server's cards (`rfid_managed: true`) but never overwrites a
+  change on this device that hasn't been sent.
 - Admin screens (Students, Assign Card, Enroll Face, Face Settings, Audit
   Log, Sync & Account, Change PIN) sit behind a **device PIN**
   (`AdminPinManager`: salted PBKDF2 hash in Keystore-backed encrypted prefs,
@@ -72,54 +129,67 @@ the repo if it's ever needed again.
   checks `role_id === 2`, so teachers and superadmins would only get 403s).
   The only in-app sign-in after that is the "forgot PIN" re-authentication,
   which skips the sync step.
-- `gate_scans` was added with a real Room migration (`MIGRATION_6_7`), not
-  the destructive fallback - installed devices hold card assignments and
-  face templates that exist nowhere else.
+- Real Room migrations (`MIGRATION_6_7`, `MIGRATION_7_8`), not the
+  destructive fallback - installed devices hold card assignments and face
+  templates that exist nowhere else.
+- Face templates stay on the device that enrolled them (unchanged): each
+  gate device enrolls its own faces.
 
-### Backend changes (Laravel - not in this repo)
+### Backend + web changes (Laravel - not in this repo)
 The user supplied their Laravel source (routes, app, database) and web
-front end on 2026-09-25. What was found, and the patch written for it
-(delivered to the user as `gate-backend-patch.zip`; **not deployed** until
-they upload it - check before assuming it's live):
+front end (`web/v2`, a static PWA). The patch for them is delivered as a
+zip (`gate-backend-patch.zip`: files at their real paths, README, full
+diff) and is **not deployed until the user uploads it** - check before
+assuming it's live. It is cumulative (includes the earlier route fix).
 
-- **The gate routes were never registered.** `admin_gate_attendance_scan`
-  and `admin_gate_attendance_today` existed in `Traits/AttendanceApi.php`
-  but not in `routes/api.php`, so the live server answered every gate
-  upload with 405 (see below). Patch adds both plus `admin_gate_students`,
-  as `Route::post`, after `admin_attendance_unlock`.
-- **`admin_gate_attendance_scan` accepts an optional `time`**
-  (`date_format:H:i`); without it, the server clock. `markGateScan()` now
-  row-locks the day's gate row, keeps `gate_events` sorted by time, drops an
-  exact duplicate (same direction + minute = a retried upload), sets
-  `check_in_time` to the earliest "in" and `last_*` to the latest event.
-- **New `admin_gate_students`** (`requireAdmin()`): every active student
-  (role 7, status 1, non-empty `code`) with the running session's section:
-  ```json
-  {"students":[{"student_id":501,"name":"Arjun S","code":"S1001","photo":"https://...","gender":"male","section_id":10,"section_name":"Grade 8B"}]}
-  ```
-- **Gate rows were counted as class attendance.** They're `status=present`
-  rows in `attendances`, and analytics, reports, exports and student
-  progress all counted them. Patch adds a global scope on `Attendance` that
-  hides `GATE_SUBJECT_ID` rows (`Attendance::gateRecords()` is the way in),
-  and filters the raw `DB::table('attendances')` queries in
-  `AcademicAnalytics*`.
-- Web front end (`v2/*.js`) has no gate screen - it never calls any
-  `admin_gate_*` endpoint.
+- **Routes** (`routes/api.php`, all `Route::post`): `admin_gate_attendance_scan`,
+  `admin_gate_attendance_today`, `admin_gate_students`,
+  `admin_gate_rejected_scan`, `admin_student_rfid_set`,
+  `admin_gate_student_overview`, `teacher_gate_records`,
+  `teacher_gate_sync`. The first two existed in the controller but were
+  never registered - every gate upload got 405 from the GET-only
+  `Route::fallback()` in `web.php`.
+- **Migrations**: `student_rfid_cards` (card registry; one active card per
+  UID and per student enforced by unique indexes on NULL-when-inactive
+  mirror columns; old cards kept as inactive/replaced|removed) and
+  `gate_events` (every scan with RFID/face results, outcome, reason,
+  unique `(school_id, device_event_id)` for idempotent uploads).
+- **`admin_gate_attendance_scan`** accepts `time`, `rfid_uid`,
+  `rfid_verified`, `face_confirmed`, `face_score`, `device_event_id`;
+  writes the gate event + the daily `attendances` gate row
+  (`markGateScan`: row-locked, events sorted by time, exact duplicates
+  dropped, check-in = earliest "in"). A retried event id returns 200 with
+  the stored result. `face_confirmed: false` here is logged as rejected,
+  never attendance.
+- **`admin_gate_students`** adds each student's active `rfid_uid` and
+  `rfid_managed: true`.
+- **Gate rows are no longer counted as class attendance**: a global scope
+  on `Attendance` hides `GATE_SUBJECT_ID` rows (`Attendance::gateRecords()`
+  reads them); raw `DB::table('attendances')` analytics filter them too.
+- **Web admin > Gate Students** (`gate-students.php/.js`, tile next to
+  Attendance): per student Student ID, name, section, registered RFID + status,
+  time in/out, last scan, face status, attendance status; filters for
+  search (name/ID), section, date, Coming In/Going Out, RFID status, face
+  status, attendance status; detail sheet with the day's events and
+  **Deactivate RFID card**.
+- **Teacher > Take Attendance**: the camera "Scan QR / ID Card" method is
+  replaced by **Gate Records (RFID + Face)** - pick class & date, see each
+  student's verified Coming In/Going Out and class status, **Sync** marks
+  present (gate time, source `gate`) only students with a verified "in"
+  and no class record yet. Never overwrites a teacher's status, never
+  duplicates, refuses a locked roster (423).
+- Verified on the sandbox's PHP: `php -l` on every file; the gate service
+  run against SQLite with real Eloquent (card registry, conflicts, replace,
+  idempotent events, overview, teacher sync incl. no-duplicate and lock);
+  both web pages driven in headless Chromium against a mocked API. Not run
+  inside the full Laravel app or on MySQL.
 - Cleanup left to the user: `app/Http/Controllers/AttendanceApi.php` is a
   byte-identical stray copy of the trait (wrong folder for its namespace),
   plus many backup files (`api.php1`, `ApiController.phpe`, `*.phpo`, ...).
 
-How the app copes with a server that doesn't have a route yet: Laravel's
-GET-only `Route::fallback()` answers an unknown POST with **405** "POST not
-supported, supported methods: GET, HEAD", not 404. The student download
-treats 404/405/501 as "not set up yet" (`isMissingEndpoint`) and shows the
-step as *skipped*; gate upload treats 405/501 the same way - scans stay
-pending and uncounted (404 there means "unknown student code" and is a real
-rejection). Both are decided by status code, never by message.
-
-**Not verified by a local build** (this sandbox can't resolve the Android
-Gradle Plugin) and not run on a device - check CI and test on real
-hardware, especially the migration on a device that already has v6 data.
+**Not verified on a device**: the app compiles and its unit tests run in CI,
+but the RFID reader, camera and migration need real hardware - especially
+`MIGRATION_7_8` on a device that already has v7 data.
 
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
@@ -1407,6 +1477,6 @@ git branch -d feature/your-feature
 
 ---
 
-**Last Updated**: 2026-09-12  
+**Last Updated**: 2026-09-25  
 **Created by**: Claude Code  
 **Status**: Active Development
