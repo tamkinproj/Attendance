@@ -47,12 +47,12 @@ interface GateScanDao {
     @Query("SELECT DISTINCT scan_date FROM gate_scans WHERE school_id = :schoolId ORDER BY scan_date DESC")
     fun observeDates(schoolId: Int): Flow<List<String>>
 
-    /** The student's latest *attendance* (face-confirmed) record - what double-tap protection compares against. */
+    /** The student's *attendance* (face-confirmed) records on [scanDate] - what the gate schedule counts. */
     @Query(
-        "SELECT * FROM gate_scans WHERE school_id = :schoolId AND student_code = :code AND outcome = 'recorded' " +
-            "ORDER BY scanned_at DESC LIMIT 1",
+        "SELECT * FROM gate_scans WHERE school_id = :schoolId AND student_code = :code AND scan_date = :scanDate " +
+            "AND outcome = 'recorded' ORDER BY scanned_at ASC",
     )
-    suspend fun latestRecordedForCode(schoolId: Int, code: String): GateScanEntity?
+    suspend fun recordedForCodeOnDate(schoolId: Int, code: String, scanDate: String): List<GateScanEntity>
 
     @Query("SELECT COUNT(*) FROM gate_scans WHERE school_id = :schoolId AND sync_status = :syncStatus")
     fun observeCount(schoolId: Int, syncStatus: String): Flow<Int>

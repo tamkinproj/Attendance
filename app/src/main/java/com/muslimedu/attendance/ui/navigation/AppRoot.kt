@@ -32,6 +32,7 @@ import com.muslimedu.attendance.ui.screens.SplashScreen
 import com.muslimedu.attendance.ui.screens.admin.AdminPinScreen
 import com.muslimedu.attendance.ui.screens.admin.AuditLogScreen
 import com.muslimedu.attendance.ui.screens.admin.GateAdminScreen
+import com.muslimedu.attendance.ui.screens.admin.GateScheduleScreen
 import com.muslimedu.attendance.ui.screens.admin.SettingsScreen
 import com.muslimedu.attendance.ui.screens.admin.StudentListScreen
 import com.muslimedu.attendance.ui.screens.auth.LoginScreen
@@ -87,6 +88,7 @@ private enum class Screen(val title: String, val requiresUnlock: Boolean) {
     AdminHome("Admin", true),
     Students("Students", true),
     Register("Register Card & Face", true),
+    GateSchedule("Gate Schedule", true),
     FaceSettings("Face Verification Settings", true),
     AuditLog("Audit Log", true),
     ChangePin("Change PIN", true),
@@ -117,9 +119,16 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
     var registerTarget by remember { mutableStateOf<RegistrationTarget?>(null) }
     var registerRequestId by rememberSaveable { mutableLongStateOf(0L) }
     var registerFromStudents by rememberSaveable { mutableStateOf(false) }
+    // Where the PIN screen goes once unlocked (the dashboard's "set up the gate" card), and
+    // whether Gate Schedule was opened from the gate rather than Admin.
+    var afterUnlock by rememberSaveable { mutableStateOf<Screen?>(null) }
+    var scheduleFromGate by rememberSaveable { mutableStateOf(false) }
 
     fun navigate(to: Screen) {
-        if (to == Screen.Gate) adminUnlocked = false
+        if (to == Screen.Gate) {
+            adminUnlocked = false
+            afterUnlock = null
+        }
         if (to == Screen.AdminPin || to == Screen.ChangePin) pinRequestId = System.nanoTime()
         if (to == Screen.ResetPinLogin) resetLoginOpenedAt = System.currentTimeMillis()
         screen = to
@@ -136,6 +145,7 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
         Screen.Gate, Screen.GateIn, Screen.GateOut, Screen.GateHistory, Screen.AdminPin, Screen.AdminHome -> Screen.Gate
         Screen.ResetPinLogin -> Screen.AdminPin
         Screen.Register -> if (registerFromStudents) Screen.Students else Screen.AdminHome
+        Screen.GateSchedule -> if (scheduleFromGate) Screen.Gate else Screen.AdminHome
         else -> Screen.AdminHome
     }
 
@@ -190,6 +200,15 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
                     onAdmin = { navigate(if (adminUnlocked) Screen.AdminHome else Screen.AdminPin) },
                     onOpen = { direction -> navigate(if (direction == GateDirection.IN) Screen.GateIn else Screen.GateOut) },
                     onHistory = { navigate(Screen.GateHistory) },
+                    onSetUpSchedule = {
+                        scheduleFromGate = true
+                        if (adminUnlocked) {
+                            navigate(Screen.GateSchedule)
+                        } else {
+                            navigate(Screen.AdminPin)
+                            afterUnlock = Screen.GateSchedule
+                        }
+                    },
                 )
                 Screen.GateIn -> GateScanScreen(direction = GateDirection.IN, onClose = { navigate(Screen.Gate) })
                 Screen.GateOut -> GateScanScreen(direction = GateDirection.OUT, onClose = { navigate(Screen.Gate) })
@@ -197,7 +216,9 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
                 Screen.AdminPin -> AdminPinScreen(
                     onUnlocked = {
                         adminUnlocked = true
-                        navigate(Screen.AdminHome)
+                        val next = afterUnlock ?: Screen.AdminHome
+                        afterUnlock = null
+                        navigate(next)
                     },
                     onForgotPin = { navigate(Screen.ResetPinLogin) },
                     requestId = pinRequestId,
@@ -214,6 +235,10 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
                     user = user,
                     onStudents = { navigate(Screen.Students) },
                     onRegister = { openRegistration(null) },
+                    onGateSchedule = {
+                        scheduleFromGate = false
+                        navigate(Screen.GateSchedule)
+                    },
                     onSync = { navigate(Screen.Sync) },
                     onSettings = { navigate(Screen.FaceSettings) },
                     onAuditLog = { navigate(Screen.AuditLog) },
@@ -228,6 +253,7 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
                     requestId = registerRequestId,
                     onFinish = { navigate(parentOf(Screen.Register)) },
                 )
+                Screen.GateSchedule -> GateScheduleScreen(onSaved = { navigate(parentOf(Screen.GateSchedule)) })
                 Screen.FaceSettings -> SettingsScreen()
                 Screen.AuditLog -> AuditLogScreen()
                 Screen.Sync -> SyncScreen(user = user, onLogout = authViewModel::logout)

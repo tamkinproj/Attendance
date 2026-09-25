@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.HowToReg
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -44,6 +45,7 @@ fun GateAdminScreen(
     user: UserDto,
     onStudents: () -> Unit,
     onRegister: () -> Unit,
+    onGateSchedule: () -> Unit,
     onSync: () -> Unit,
     onSettings: () -> Unit,
     onAuditLog: () -> Unit,
@@ -80,6 +82,7 @@ fun GateAdminScreen(
         SectionHeader("Device", modifier = Modifier.padding(top = 16.dp))
         ActionGrid(
             listOf(
+                AdminAction(Icons.Filled.Schedule, "Gate Schedule", BrandPrimary, onGateSchedule),
                 AdminAction(Icons.Filled.CloudSync, "Sync & Account", BrandPrimary, onSync),
                 AdminAction(Icons.Filled.Tune, "Face Settings", AccentSlate, onSettings),
                 AdminAction(Icons.Filled.History, "Audit Log", AccentGold, onAuditLog),

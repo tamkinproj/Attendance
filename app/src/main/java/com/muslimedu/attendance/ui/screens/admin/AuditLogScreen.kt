@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Login
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
@@ -129,6 +130,7 @@ private fun actionIcon(action: String): Pair<ImageVector, Color> = when (action)
     AuditLogger.ACTION_FACE_ENROLLED -> Icons.Filled.Face to AccentSuccess
     AuditLogger.ACTION_RFID_ASSIGNED -> Icons.Filled.CreditCard to AccentSuccess
     AuditLogger.ACTION_STUDENT_ADDED -> Icons.Filled.PersonAdd to BrandPrimary
+    AuditLogger.ACTION_GATE_SCHEDULE_SET -> Icons.Filled.Schedule to BrandPrimary
     else -> Icons.Filled.History to TextSecondary
 }
 
@@ -140,6 +142,7 @@ private fun actionLabel(action: String): String = when (action) {
     AuditLogger.ACTION_FACE_ENROLLED -> "Face Enrolled"
     AuditLogger.ACTION_RFID_ASSIGNED -> "RFID Assigned"
     AuditLogger.ACTION_STUDENT_ADDED -> "Student Added"
+    AuditLogger.ACTION_GATE_SCHEDULE_SET -> "Gate Schedule Set"
     else -> action
 }
 

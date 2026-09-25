@@ -60,6 +60,14 @@ system: step 2 is `LiveFaceCaptureView` (auto-capture) +
 `FaceTemplateRepository.verify` (match against the template enrolled on
 this device), the same pieces the old gate screen used.
 
+- **Gate Schedule - set before the gate can be used** (Admin > Gate
+  Schedule, `GateScheduleScreen`; `DeviceSettings.gateScansPerDay`, null
+  until set): **Morning only** (1 In + 1 Out), **Whole day** (2 + 2, out
+  and back for lunch) or Custom (3-4). Until it's set the dashboard shows a
+  "Set up the gate first" card and Coming In / Going Out lead to it (via the
+  admin PIN - `AppRoot.afterUnlock` - then back to the gate). Changes are in
+  the Audit Log (`gate_schedule_set`). The user asked for this because
+  schools differ (whole day 2 in / 2 out vs morning class 1 in / 1 out).
 - **Gate dashboard** (`GateDashboardScreen`, the home screen, no PIN):
   Coming In / Going Out buttons, sync status (pending count, last synced,
   Sync now), recent RFID records, "View all" -> `GateHistoryScreen` (by day,
@@ -77,8 +85,15 @@ this device), the same pieces the old gate screen used.
   - Student has no face enrolled -> refused the same way (rejected row).
     The card alone never records attendance - that's what stops card
     sharing. Unknown card -> "Card not registered", nothing saved.
-  - Same student + direction within 60s (a recorded one) -> "Already
-    recorded", no face step, nothing new saved.
+  - **Gate schedule** (`GateSchedule.check`, before the face step, nothing
+    saved when refused): scans alternate Coming In / Going Out, up to the
+    admin's number per day each way. Same direction as the student's last
+    scan today -> "Already Coming In ... next scan is Going Out" (this also
+    covers a double tap - it replaced the old 60s duplicate window); one
+    more than the day allows -> "No more Coming In today". Going Out is
+    allowed with no Coming In first (a forgotten scan-in). Re-checked when
+    saving (`recordConfirmed`). The success card shows "Coming In · 1 of 2
+    today". Per device: another gate device's scans aren't counted.
   - The view model outlives the screen, so it ignores the reader unless
     the screen is open (`enter()`/`exit()`) - a tap in the registration
     wizard must not record gate attendance. The wizard does the same the
@@ -175,7 +190,7 @@ this device), the same pieces the old gate screen used.
     which replaces the old row. Old rows are kept, not deleted.
   - Liveness is unchanged: still `LivenessDetector`'s eye-open heuristic,
     so a good photo/video of the student can still pass the camera step.
-- Admin screens (Register Card & Face, Students, Face Settings, Audit
+- Admin screens (Register Card & Face, Students, Gate Schedule, Face Settings, Audit
   Log, Sync & Account, Change PIN) sit behind a **device PIN**
   (`AdminPinManager`: salted PBKDF2 hash in Keystore-backed encrypted prefs,
   5 wrong tries -> 60s lockout, counted persistently). They relock when you
