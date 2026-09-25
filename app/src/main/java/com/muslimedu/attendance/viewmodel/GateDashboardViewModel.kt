@@ -3,6 +3,7 @@ package com.muslimedu.attendance.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.muslimedu.attendance.data.db.entities.GateScanEntity
+import com.muslimedu.attendance.data.local.DeviceSettings
 import com.muslimedu.attendance.data.repository.GateAttendanceRepository
 import com.muslimedu.attendance.rfid.RfidManager
 import com.muslimedu.attendance.sync.GateSyncManager
@@ -32,7 +33,11 @@ class GateDashboardViewModel @Inject constructor(
     private val gateSyncManager: GateSyncManager,
     rfidManager: RfidManager,
     networkMonitor: NetworkMonitor,
+    deviceSettings: DeviceSettings,
 ) : ViewModel() {
+
+    /** Coming In and Going Out scans per student per day; null until an admin sets it - the gate is blocked until then. */
+    val scansPerDay: StateFlow<Int?> = deviceSettings.gateScansPerDay
 
     val today: StateFlow<GateTodayStats> = gateAttendanceRepository.observeToday()
         .map(::toStats)

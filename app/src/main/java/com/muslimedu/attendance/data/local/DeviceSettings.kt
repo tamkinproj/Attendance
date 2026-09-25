@@ -49,6 +49,19 @@ class DeviceSettings @Inject constructor(
         _postLoginSyncPending.value = pending
     }
 
+    /**
+     * The admin's gate schedule: Coming In and Going Out scans per student per
+     * day (the same number each way). Null until set - the gate can't be
+     * used before that. See [com.muslimedu.attendance.data.repository.GateSchedule].
+     */
+    private val _gateScansPerDay = MutableStateFlow(prefs.getInt(KEY_GATE_SCANS_PER_DAY, 0).takeIf { it > 0 })
+    val gateScansPerDay: StateFlow<Int?> = _gateScansPerDay.asStateFlow()
+
+    fun setGateScansPerDay(perDay: Int) {
+        prefs.edit().putInt(KEY_GATE_SCANS_PER_DAY, perDay).apply()
+        _gateScansPerDay.value = perDay
+    }
+
     var lastStudentDownloadAt: Long?
         get() = prefs.getLong(KEY_LAST_STUDENT_DOWNLOAD, 0L).takeIf { it > 0L }
         set(value) {
@@ -61,5 +74,6 @@ class DeviceSettings @Inject constructor(
         private const val KEY_SCHOOL_ID = "school_id"
         private const val KEY_LAST_STUDENT_DOWNLOAD = "last_student_download_at"
         private const val KEY_POST_LOGIN_SYNC = "post_login_sync_pending"
+        private const val KEY_GATE_SCANS_PER_DAY = "gate_scans_per_day"
     }
 }

@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.FaceRetouchingOff
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Nfc
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -60,6 +61,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.muslimedu.attendance.data.db.entities.GateScanEntity
 import com.muslimedu.attendance.data.db.entities.StudentEntity
+import com.muslimedu.attendance.data.repository.GateScanCheck
 import com.muslimedu.attendance.rfid.ReaderStatus
 import com.muslimedu.attendance.ui.components.InitialsAvatar
 import com.muslimedu.attendance.ui.components.LiveFaceCaptureView
@@ -96,6 +98,7 @@ fun GateScanScreen(
     val isSyncing by viewModel.isSyncing.collectAsState()
     val readerStatus by viewModel.readerStatus.collectAsState()
     val session by viewModel.session.collectAsState()
+    val scansPerDay by viewModel.scansPerDay.collectAsState()
 
     LaunchedEffect(direction) { viewModel.enter(direction) }
     DisposableEffect(Unit) { onDispose { viewModel.exit() } }
@@ -110,7 +113,7 @@ fun GateScanScreen(
     val accent = direction.color()
 
     Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        Header(direction, accent, unsynced, isSyncing, readerStatus, onBack = viewModel::requestLeave)
+        Header(direction, accent, unsynced, isSyncing, readerStatus, scansPerDay, onBack = viewModel::requestLeave)
 
         Column(
             modifier = Modifier
@@ -134,16 +137,18 @@ fun GateScanScreen(
                     StudentCard(s.student, viewModel::loadPhoto, content)
                     VerifyingCard(s.student, content)
                 }
-                is GateScanState.Recorded -> SuccessCard(s.scan, onNext = viewModel::dismissResult, modifier = content)
-                is GateScanState.Duplicate -> NoticeCard(
-                    title = "Already recorded",
-                    message = "${s.existing.studentName ?: s.existing.studentCode} was recorded ${directionLabel(s.existing.direction)} " +
-                        "at ${displayTime(s.existing.scanTime)} - not counted twice.",
-                    color = directionColor(s.existing.direction),
-                    icon = Icons.Filled.CheckCircle,
-                    onOk = viewModel::dismissResult,
-                    modifier = content,
-                )
+                is GateScanState.Recorded -> SuccessCard(s.scan, s.number, s.perDay, onNext = viewModel::dismissResult, modifier = content)
+                is GateScanState.NotAllowed -> {
+                    val (title, message) = notAllowedText(s)
+                    NoticeCard(
+                        title = title,
+                        message = message,
+                        color = if (s.check is GateScanCheck.SameAsLast) directionColor(s.direction.apiValue) else AccentGold,
+                        icon = if (s.check is GateScanCheck.SameAsLast) Icons.Filled.CheckCircle else Icons.Filled.Schedule,
+                        onOk = viewModel::dismissResult,
+                        modifier = content,
+                    )
+                }
                 is GateScanState.FaceFailed -> {
                     StudentCard(s.student, viewModel::loadPhoto, content, faceFailed = true)
                     FaceFailedCard(s.reason, onTryAgain = viewModel::tryAgain, onCancel = viewModel::cancelCheck, modifier = content)
@@ -153,7 +158,7 @@ fun GateScanScreen(
                     NoticeCard(
                         title = "Face Confirmation Failed",
                         message = "Attendance was not recorded.\n${s.student.name} has no face enrolled on this device. " +
-                            "An admin can enroll it in Admin > Enroll Face.",
+                            "An admin can enroll it in Admin > Register Card & Face.",
                         color = AccentRed,
                         icon = Icons.Filled.FaceRetouchingOff,
                         onOk = viewModel::dismissResult,
@@ -163,7 +168,7 @@ fun GateScanScreen(
                 is GateScanState.UnknownCard -> NoticeCard(
                     title = "Card not registered",
                     message = "Attendance was not recorded.\nCard ${s.uid} isn't registered to any student on this device. " +
-                        "An admin can register it in Admin > Assign RFID Card.",
+                        "An admin can register it in Admin > Register Card & Face.",
                     color = AccentRed,
                     icon = Icons.Filled.CreditCard,
                     onOk = viewModel::dismissResult,
@@ -189,6 +194,7 @@ private fun Header(
     unsynced: Int,
     isSyncing: Boolean,
     readerStatus: ReaderStatus,
+    scansPerDay: Int?,
     onBack: () -> Unit,
 ) {
     Surface(color = accent, modifier = Modifier.fillMaxWidth()) {
@@ -205,7 +211,8 @@ private fun Header(
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        displayDate(LocalDate.now().toString()),
+                        listOfNotNull(displayDate(LocalDate.now().toString()), scansPerDay?.let { "$it In · $it Out per day" })
+                            .joinToString("  ·  "),
                         color = Color.White.copy(alpha = 0.85f),
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -356,7 +363,7 @@ private fun VerifyingCard(student: StudentEntity, modifier: Modifier) {
 }
 
 @Composable
-private fun SuccessCard(scan: GateScanEntity, onNext: () -> Unit, modifier: Modifier) {
+private fun SuccessCard(scan: GateScanEntity, number: Int, perDay: Int, onNext: () -> Unit, modifier: Modifier) {
     val accent = directionColor(scan.direction)
     Card(modifier = modifier, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -380,7 +387,7 @@ private fun SuccessCard(scan: GateScanEntity, onNext: () -> Unit, modifier: Modi
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
-            SmallChip(directionLabel(scan.direction), accent, Modifier.padding(top = 12.dp))
+            SmallChip("${directionLabel(scan.direction)} · $number of $perDay today", accent, Modifier.padding(top = 12.dp))
             Row(modifier = Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 CheckMark("RFID Verified", ok = true)
                 CheckMark("Face Confirmed", ok = true)
@@ -410,6 +417,24 @@ private fun FaceFailedCard(reason: String, onTryAgain: () -> Unit, onCancel: () 
                 Button(onClick = onTryAgain, colors = ButtonDefaults.buttonColors(containerColor = AccentRed)) { Text("Try again") }
             }
         }
+    }
+}
+
+/** Title and message for a scan the gate schedule refused. */
+private fun notAllowedText(s: GateScanState.NotAllowed): Pair<String, String> {
+    val name = s.student.name
+    val dir = s.direction.label
+    return when (val check = s.check) {
+        is GateScanCheck.SameAsLast -> "Already $dir" to
+            "Attendance was not recorded again.\n$name was recorded $dir at ${displayTime(check.last.scanTime)}. " +
+            "Their next scan is ${s.direction.opposite.label}."
+        is GateScanCheck.LimitReached -> "No more $dir today" to
+            "Attendance was not recorded.\n$name already has all ${check.perDay} $dir scan(s) for today " +
+            "(last at ${displayTime(check.last.scanTime)}). This gate is set to ${check.perDay} In and ${check.perDay} Out per day."
+        GateScanCheck.NotSetUp -> "Gate not set up" to
+            "Attendance was not recorded.\nAn admin must first set how many Coming In and Going Out scans each student " +
+            "makes per day (Admin > Gate Schedule)."
+        is GateScanCheck.Allowed -> "" to ""
     }
 }
 

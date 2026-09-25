@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material3.Card
@@ -83,6 +84,7 @@ fun GateDashboardScreen(
     onAdmin: () -> Unit,
     onOpen: (GateDirection) -> Unit,
     onHistory: () -> Unit,
+    onSetUpSchedule: () -> Unit,
     viewModel: GateDashboardViewModel = hiltViewModel(),
 ) {
     val today by viewModel.today.collectAsState()
@@ -94,6 +96,7 @@ fun GateDashboardScreen(
     val isOnline by viewModel.isOnline.collectAsState()
     val readerStatus by viewModel.readerStatus.collectAsState()
     val syncMessage by viewModel.syncMessage.collectAsState()
+    val scansPerDay by viewModel.scansPerDay.collectAsState()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -104,10 +107,22 @@ fun GateDashboardScreen(
 
         item { SummaryCard(today, unsynced) }
 
+        // The gate can't be used until an admin sets how many scans a day each student makes.
+        if (scansPerDay == null) item { ScheduleSetupCard(onSetUpSchedule) }
+
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                DirectionCard(GateDirection.IN, Modifier.weight(1f)) { onOpen(GateDirection.IN) }
-                DirectionCard(GateDirection.OUT, Modifier.weight(1f)) { onOpen(GateDirection.OUT) }
+                val open = { direction: GateDirection -> if (scansPerDay == null) onSetUpSchedule() else onOpen(direction) }
+                DirectionCard(GateDirection.IN, Modifier.weight(1f)) { open(GateDirection.IN) }
+                DirectionCard(GateDirection.OUT, Modifier.weight(1f)) { open(GateDirection.OUT) }
+            }
+            scansPerDay?.let {
+                Text(
+                    "Each student: $it Coming In · $it Going Out per day",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 10.dp, start = 4.dp),
+                )
             }
             // Only speaks up when there's a problem - a working reader needs no label.
             if (!readerStatus.connected) ReaderWarning(readerStatus, Modifier.padding(top = 10.dp, start = 4.dp))
@@ -326,6 +341,36 @@ internal fun ReaderLine(status: ReaderStatus, modifier: Modifier = Modifier, onD
             color = if (onDark) Color.White.copy(alpha = 0.9f) else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 8.dp),
         )
+    }
+}
+
+/** Shown until the admin sets the gate schedule; Coming In / Going Out lead here too. */
+@Composable
+private fun ScheduleSetupCard(onSetUp: () -> Unit) {
+    Card(
+        onClick = onSetUp,
+        shape = CardShape,
+        colors = CardDefaults.cardColors(containerColor = tint(AccentGold, 0.12f)),
+        border = BorderStroke(1.dp, tint(AccentGold, 0.3f)),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(modifier = Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier.size(48.dp).background(AccentGold.copy(alpha = 0.16f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.Schedule, contentDescription = null, tint = AccentGold, modifier = Modifier.size(26.dp))
+            }
+            Column(modifier = Modifier.weight(1f).padding(start = 14.dp)) {
+                Text("Set up the gate first", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    "An admin chooses how many Coming In and Going Out scans each student makes per day.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = AccentGold)
+        }
     }
 }
 
