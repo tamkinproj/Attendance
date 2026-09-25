@@ -24,16 +24,14 @@ data class GateAttendanceScanRequest(
     @SerializedName("direction") val direction: String, // "in" or "out"
     @SerializedName("date") val date: String? = null,
     /**
-     * "HH:mm", the real moment of an offline scan. NOT yet accepted by the
-     * backend - it currently stamps the server's clock at upload time. This
-     * is the proposed contract (see CLAUDE.md "Offline gate-only mode");
-     * Laravel ignores unknown fields, so sending it early is harmless and
-     * times become correct the moment the backend reads it.
+     * "HH:mm", the real moment of an offline scan. Read by the backend patch
+     * (see CLAUDE.md "Backend changes"); a server without it ignores the
+     * field and stamps its own clock at upload time.
      */
     @SerializedName("time") val time: String? = null,
 )
 
-/** Proposed `admin_gate_students` - not live on the backend yet, see CLAUDE.md "Offline gate-only mode". */
+/** `admin_gate_students` - added by the backend patch, see CLAUDE.md "Backend changes". */
 class GateStudentsRequest
 
 data class GateStudentDto(

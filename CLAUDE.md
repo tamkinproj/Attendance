@@ -76,28 +76,46 @@ the repo if it's ever needed again.
   the destructive fallback - installed devices hold card assignments and
   face templates that exist nowhere else.
 
-### Backend changes needed (Laravel - not in this repo)
-Neither of these exists yet; the app is built against this proposed
-contract (`GateOfflineContractTest` pins it) and degrades safely until then.
+### Backend changes (Laravel - not in this repo)
+The user supplied their Laravel source (routes, app, database) and web
+front end on 2026-09-25. What was found, and the patch written for it
+(delivered to the user as `gate-backend-patch.zip`; **not deployed** until
+they upload it - check before assuming it's live):
 
-1. **`POST /admin_gate_attendance_scan`: accept an optional `time`**
-   (`date_format:H:i`, same as `check_in_time` elsewhere). The app already
-   sends it with `date`. Today the server stamps its own clock, so a scan
-   made offline at 07:30 and uploaded at 15:00 is recorded as 15:00. When
-   `time` is present, use it for `check_in_time` and the `gate_events`
-   entry; keep `check_in_time` = the earliest "in" by time, and keep
-   `gate_events` sorted by time (several gates may upload out of order).
-   Ignoring an exact duplicate event (same student/date/direction/time)
-   also covers an upload retried after a lost response.
-2. **New `POST /admin_gate_students`** (gated on `requireAdmin()`): every
-   active student in the admin's school with their `code`. No existing
-   endpoint returns that (`admin_section_students` has no `code`; the
-   teacher roster is one class). Response:
-   ```json
-   {"students":[{"student_id":501,"name":"Arjun S","code":"S1001","photo":"https://...","gender":"male","section_id":10,"section_name":"Grade 8B"}]}
-   ```
-   Until it exists, "Download students" shows a clear "not supported yet"
-   message and students can be added by hand in Admin > Students.
+- **The gate routes were never registered.** `admin_gate_attendance_scan`
+  and `admin_gate_attendance_today` existed in `Traits/AttendanceApi.php`
+  but not in `routes/api.php`, so the live server answered every gate
+  upload with 405 (see below). Patch adds both plus `admin_gate_students`,
+  as `Route::post`, after `admin_attendance_unlock`.
+- **`admin_gate_attendance_scan` accepts an optional `time`**
+  (`date_format:H:i`); without it, the server clock. `markGateScan()` now
+  row-locks the day's gate row, keeps `gate_events` sorted by time, drops an
+  exact duplicate (same direction + minute = a retried upload), sets
+  `check_in_time` to the earliest "in" and `last_*` to the latest event.
+- **New `admin_gate_students`** (`requireAdmin()`): every active student
+  (role 7, status 1, non-empty `code`) with the running session's section:
+  ```json
+  {"students":[{"student_id":501,"name":"Arjun S","code":"S1001","photo":"https://...","gender":"male","section_id":10,"section_name":"Grade 8B"}]}
+  ```
+- **Gate rows were counted as class attendance.** They're `status=present`
+  rows in `attendances`, and analytics, reports, exports and student
+  progress all counted them. Patch adds a global scope on `Attendance` that
+  hides `GATE_SUBJECT_ID` rows (`Attendance::gateRecords()` is the way in),
+  and filters the raw `DB::table('attendances')` queries in
+  `AcademicAnalytics*`.
+- Web front end (`v2/*.js`) has no gate screen - it never calls any
+  `admin_gate_*` endpoint.
+- Cleanup left to the user: `app/Http/Controllers/AttendanceApi.php` is a
+  byte-identical stray copy of the trait (wrong folder for its namespace),
+  plus many backup files (`api.php1`, `ApiController.phpe`, `*.phpo`, ...).
+
+How the app copes with a server that doesn't have a route yet: Laravel's
+GET-only `Route::fallback()` answers an unknown POST with **405** "POST not
+supported, supported methods: GET, HEAD", not 404. The student download
+treats 404/405/501 as "not set up yet" (`isMissingEndpoint`) and shows the
+step as *skipped*; gate upload treats 405/501 the same way - scans stay
+pending and uncounted (404 there means "unknown student code" and is a real
+rejection). Both are decided by status code, never by message.
 
 **Not verified by a local build** (this sandbox can't resolve the Android
 Gradle Plugin) and not run on a device - check CI and test on real

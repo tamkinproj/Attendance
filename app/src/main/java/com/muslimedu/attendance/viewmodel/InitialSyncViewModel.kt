@@ -6,6 +6,7 @@ import com.muslimedu.attendance.data.db.entities.GateScanEntity
 import com.muslimedu.attendance.data.local.DeviceSettings
 import com.muslimedu.attendance.data.repository.GateAttendanceRepository
 import com.muslimedu.attendance.data.repository.StudentDownloadRepository
+import com.muslimedu.attendance.data.repository.StudentDownloadUnavailableException
 import com.muslimedu.attendance.sync.GateSyncManager
 import com.muslimedu.attendance.sync.GateSyncOutcome
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -16,7 +17,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-enum class SyncStepStatus { Waiting, Running, Done, Failed }
+/** [Skipped]: nothing went wrong on the device - the server just doesn't offer that step yet. Doesn't block the gate. */
+enum class SyncStepStatus { Waiting, Running, Done, Skipped, Failed }
 
 data class SyncStepState(val status: SyncStepStatus = SyncStepStatus.Waiting, val detail: String? = null)
 
@@ -25,9 +27,12 @@ data class InitialSyncUiState(
     val download: SyncStepState = SyncStepState(),
 ) {
     val isRunning: Boolean get() = upload.status == SyncStepStatus.Running || download.status == SyncStepStatus.Running
-    val allDone: Boolean get() = upload.status == SyncStepStatus.Done && download.status == SyncStepStatus.Done
+    val allDone: Boolean get() = upload.status.isComplete && download.status.isComplete
     val hasFailure: Boolean get() = upload.status == SyncStepStatus.Failed || download.status == SyncStepStatus.Failed
 }
+
+private val SyncStepStatus.isComplete: Boolean
+    get() = this == SyncStepStatus.Done || this == SyncStepStatus.Skipped
 
 /**
  * The step between a fresh admin sign-in and the gate: upload anything
@@ -95,6 +100,9 @@ class InitialSyncViewModel @Inject constructor(
             val total = s.added + s.updated
             SyncStepState(SyncStepStatus.Done, "$total students (${s.added} new, ${s.updated} updated)")
         },
-        onFailure = { SyncStepState(SyncStepStatus.Failed, it.message ?: "Download failed") },
+        onFailure = {
+            val status = if (it is StudentDownloadUnavailableException) SyncStepStatus.Skipped else SyncStepStatus.Failed
+            SyncStepState(status, it.message ?: "Download failed")
+        },
     )
 }

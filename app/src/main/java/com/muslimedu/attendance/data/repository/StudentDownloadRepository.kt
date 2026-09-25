@@ -17,6 +17,24 @@ import javax.inject.Singleton
 data class StudentDownloadSummary(val added: Int, val updated: Int, val skipped: Int)
 
 /**
+ * The school server doesn't have `admin_gate_students` yet. Not an error the
+ * admin can fix from the device - screens show it as "not available yet"
+ * rather than a failure, and students can still be added by hand.
+ */
+class StudentDownloadUnavailableException : Exception(
+    "Student download isn't set up on the school server yet. Add students by hand in Admin > Students until it is.",
+)
+
+/**
+ * How a Laravel server answers a route that doesn't exist: 404, or 405 when
+ * a GET-only catch-all (`Route::fallback()`, an SPA route) matches the URL -
+ * Laravel then reports "POST not supported, supported methods: GET, HEAD"
+ * instead of "not found". Both come with a JSON `message`, so the message
+ * can't be used to tell them apart from a real error; the status code can.
+ */
+internal fun isMissingEndpoint(httpCode: Int): Boolean = httpCode == 404 || httpCode == 405 || httpCode == 501
+
+/**
  * Downloads the whole school's student list (proposed `admin_gate_students`
  * endpoint) into the local cache so gate scanning works offline.
  *
@@ -41,12 +59,8 @@ class StudentDownloadRepository @Inject constructor(
             if (!response.success) return Result.failure(Exception(response.message ?: "Download failed"))
             response.data?.students ?: return Result.failure(Exception("The server did not return a student list"))
         } catch (e: HttpException) {
-            val message = if (e.code() == 404 && e.extractApiErrorMessage() == null) {
-                "The server doesn't support student download yet (admin_gate_students) - add students by hand for now"
-            } else {
-                e.extractApiErrorMessage() ?: "Download failed (${e.code()})"
-            }
-            return Result.failure(Exception(message))
+            if (isMissingEndpoint(e.code())) return Result.failure(StudentDownloadUnavailableException())
+            return Result.failure(Exception(e.extractApiErrorMessage() ?: "Download failed (${e.code()})"))
         } catch (e: IOException) {
             return Result.failure(Exception("Network error - check your connection"))
         }
