@@ -918,6 +918,19 @@ Two separate causes, both fixed:
    A fixed signing key (stored as a GitHub secret) would fix that; not set
    up yet.
 
+### Plugging in the reader throws you back to the dashboard
+Symptom: on Assign RFID Card ("Tap <name>'s card on the reader"), plugging
+in the USB reader jumped straight to the gate dashboard, so the card could
+never be assigned. A keyboard-emulation reader *is* a USB keyboard, and
+attaching one is a `keyboard`/`keyboardHidden`/`navigation` configuration
+change - `MainActivity` didn't declare those, so Android destroyed and
+recreated it, and `AppRoot`'s screen state (plain `remember`) restarted at
+`Screen.Gate`. Fixed: the activity declares
+`configChanges="keyboard|keyboardHidden|navigation"` (Compose handles them,
+nothing is recreated), and the current screen is `rememberSaveable` so any
+other recreation (rotation, theme) keeps the admin where they were. The
+"Tap card" step also shows the reader's status now.
+
 ### Scanning a real card does nothing
 There is no simulated reader in any build any more (`MockRfidReader` and
 Simulate Scan were removed) - only the keyboard-emulation and raw-USB

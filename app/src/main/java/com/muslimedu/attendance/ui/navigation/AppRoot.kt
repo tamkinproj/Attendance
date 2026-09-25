@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -107,7 +108,10 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
     val lastLoginAt by authViewModel.lastLoginAt.collectAsState()
     val pinViewModel: AdminPinViewModel = hiltViewModel()
 
-    var screen by remember { mutableStateOf(Screen.Gate) }
+    // Saveable: if the activity is ever recreated (rotation, theme change,
+    // the system restoring the app), the admin stays on the screen they
+    // were on instead of being dropped back on the dashboard.
+    var screen by rememberSaveable { mutableStateOf(Screen.Gate) }
     var adminUnlocked by remember { mutableStateOf(false) }
     var resetLoginOpenedAt by remember { mutableLongStateOf(0L) }
     var pinRequestId by remember { mutableLongStateOf(0L) }

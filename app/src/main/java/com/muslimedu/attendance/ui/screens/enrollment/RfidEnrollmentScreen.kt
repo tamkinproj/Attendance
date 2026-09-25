@@ -36,6 +36,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.muslimedu.attendance.data.db.entities.StudentEntity
+import com.muslimedu.attendance.rfid.ReaderStatus
+import com.muslimedu.attendance.ui.screens.gate.ReaderLine
 import com.muslimedu.attendance.ui.components.StepIndicator
 import com.muslimedu.attendance.ui.theme.AccentGold
 import com.muslimedu.attendance.ui.theme.AccentRed
@@ -100,7 +102,10 @@ fun RfidEnrollmentScreen(
                         loadPhoto = viewModel::loadPhoto,
                     )
                 }
-                is RfidEnrollmentUiState.Listening -> ListeningContent(student = state.student)
+                is RfidEnrollmentUiState.Listening -> {
+                    val readerStatus by viewModel.readerStatus.collectAsState()
+                    ListeningContent(student = state.student, readerStatus = readerStatus)
+                }
                 is RfidEnrollmentUiState.ConfirmReplace -> ConfirmReplaceContent(
                     state = state,
                     onReplace = viewModel::confirmReplace,
@@ -129,7 +134,7 @@ fun RfidEnrollmentScreen(
 
 /** Waits for the physical card - there is no typed-in UID, so every registered card really exists. */
 @Composable
-private fun ListeningContent(student: StudentEntity) {
+private fun ListeningContent(student: StudentEntity, readerStatus: ReaderStatus) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -150,6 +155,7 @@ private fun ListeningContent(student: StudentEntity) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 4.dp),
         )
+        ReaderLine(readerStatus, modifier = Modifier.padding(top = 16.dp))
         student.rfidCardNumber?.let { current ->
             Text(
                 text = "Current card: $current. Tapping a different card replaces it (you'll be asked to confirm).",

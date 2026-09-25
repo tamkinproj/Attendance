@@ -75,6 +75,9 @@ class RfidEnrollmentViewModel @Inject constructor(
     private val _students = MutableStateFlow<List<StudentEntity>>(emptyList())
     val students: StateFlow<List<StudentEntity>> = _students.asStateFlow()
 
+    /** Whether a reader is plugged in - shown on the "tap the card" step. */
+    val readerStatus = rfidManager.status
+
     private var listenJob: Job? = null
 
     init {
