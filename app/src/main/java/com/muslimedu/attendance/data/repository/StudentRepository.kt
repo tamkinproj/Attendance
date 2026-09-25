@@ -3,6 +3,7 @@ package com.muslimedu.attendance.data.repository
 import com.muslimedu.attendance.data.db.dao.StudentDao
 import com.muslimedu.attendance.data.db.entities.StudentEntity
 import com.muslimedu.attendance.data.local.DeviceSettings
+import com.muslimedu.attendance.rfid.normalizeRfidUid
 import com.muslimedu.attendance.security.AuditLogger
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -35,7 +36,7 @@ class StudentRepository @Inject constructor(
      * mode existed can't resolve that school's cards here.
      */
     suspend fun findByRfid(rfidUid: String): StudentEntity? =
-        studentDao.findByRfidInSchool(deviceSettings.schoolId.value, rfidUid)
+        studentDao.findByRfidInSchool(deviceSettings.schoolId.value, normalizeRfidUid(rfidUid))
 
     suspend fun findByCode(code: String): StudentEntity? =
         studentDao.findByCodeInSchool(deviceSettings.schoolId.value, code)
@@ -58,7 +59,7 @@ class StudentRepository @Inject constructor(
      * lost/replaced card case.
      */
     suspend fun assignRfidCard(student: StudentEntity, rfidUid: String, replace: Boolean = false): CardAssignResult {
-        val uid = rfidUid.trim()
+        val uid = normalizeRfidUid(rfidUid)
         val owner = studentDao.findAnyByRfid(uid)
         if (owner != null && owner.id != student.id) return CardAssignResult.OwnedByOther(owner)
         val current = studentDao.findBySchoolAndStudentId(student.schoolId, student.studentId) ?: student

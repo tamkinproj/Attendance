@@ -13,6 +13,7 @@ import com.muslimedu.attendance.data.repository.GateRecordResult
 import com.muslimedu.attendance.data.repository.StudentRepository
 import com.muslimedu.attendance.rfid.RfidEvent
 import com.muslimedu.attendance.rfid.RfidManager
+import com.muslimedu.attendance.rfid.normalizeRfidUid
 import com.muslimedu.attendance.sync.GateSyncManager
 import com.muslimedu.attendance.sync.GateSyncOutcome
 import com.muslimedu.attendance.sync.GateSyncScheduler
@@ -157,7 +158,7 @@ class GateScanViewModel @Inject constructor(
         if (!active || _leaveDialog.value != LeaveDialogState.Hidden) return
         // Mid face check: the card on the reader belongs to the person at the camera.
         if (_state.value is GateScanState.FaceCheck || _state.value is GateScanState.Verifying) return
-        val uid = rawUid.trim()
+        val uid = normalizeRfidUid(rawUid)
         if (uid.isEmpty()) return
         cancelTimers()
 

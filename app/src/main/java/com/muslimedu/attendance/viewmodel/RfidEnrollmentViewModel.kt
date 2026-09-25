@@ -10,6 +10,7 @@ import com.muslimedu.attendance.data.repository.CardAssignResult
 import com.muslimedu.attendance.data.repository.StudentRepository
 import com.muslimedu.attendance.rfid.RfidEvent
 import com.muslimedu.attendance.rfid.RfidManager
+import com.muslimedu.attendance.rfid.normalizeRfidUid
 import com.muslimedu.attendance.sync.GateSyncScheduler
 import com.muslimedu.attendance.sync.RfidCardSyncManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -110,10 +111,11 @@ class RfidEnrollmentViewModel @Inject constructor(
     suspend fun loadPhoto(student: StudentEntity): Bitmap? =
         photoCache.loadCachedBitmap(student.schoolId, student.studentId)
 
-    private suspend fun assignCard(student: StudentEntity, uid: String, replace: Boolean) {
+    private suspend fun assignCard(student: StudentEntity, rawUid: String, replace: Boolean) {
+        val uid = normalizeRfidUid(rawUid)
         when (val result = studentRepository.assignRfidCard(student, uid, replace)) {
             is CardAssignResult.NeedsReplace ->
-                _uiState.value = RfidEnrollmentUiState.ConfirmReplace(student, uid.trim(), result.currentUid)
+                _uiState.value = RfidEnrollmentUiState.ConfirmReplace(student, uid, result.currentUid)
             is CardAssignResult.OwnedByOther ->
                 _uiState.value = RfidEnrollmentUiState.Failed(
                     student,
@@ -122,7 +124,7 @@ class RfidEnrollmentViewModel @Inject constructor(
                 )
             is CardAssignResult.Assigned -> {
                 _students.value = studentRepository.getAll()
-                _uiState.value = RfidEnrollmentUiState.Success(student, uid.trim(), result.replacedUid, serverNote = "Sending to the web admin...")
+                _uiState.value = RfidEnrollmentUiState.Success(student, uid, result.replacedUid, serverNote = "Sending to the web admin...")
                 val note = uploadAndDescribe(student)
                 val current = _uiState.value
                 if (current is RfidEnrollmentUiState.Success && current.student.id == student.id) {

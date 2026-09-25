@@ -95,6 +95,10 @@ abstract class AppDatabase : RoomDatabase() {
 
                 db.execSQL("ALTER TABLE `students` ADD COLUMN `rfid_sync_status` TEXT NOT NULL DEFAULT 'synced'")
                 db.execSQL("ALTER TABLE `students` ADD COLUMN `rfid_sync_error` TEXT")
+                // One stored form for UIDs (see normalizeRfidUid). OR IGNORE:
+                // two rows differing only in case would collide on the unique
+                // index - leave those as they are rather than fail the upgrade.
+                db.execSQL("UPDATE OR IGNORE `students` SET `rfid_card_number` = upper(trim(`rfid_card_number`)) WHERE `rfid_card_number` IS NOT NULL")
                 // Cards assigned before the server kept a registry exist only
                 // here - queue them for upload once.
                 db.execSQL("UPDATE `students` SET `rfid_sync_status` = 'pending' WHERE `rfid_card_number` IS NOT NULL")

@@ -9,6 +9,7 @@ import com.muslimedu.attendance.data.remote.ApiService
 import com.muslimedu.attendance.data.remote.dto.GateStudentDto
 import com.muslimedu.attendance.data.remote.dto.GateStudentsRequest
 import com.muslimedu.attendance.data.remote.extractApiErrorMessage
+import com.muslimedu.attendance.rfid.normalizeRfidUid
 import retrofit2.HttpException
 import java.io.IOException
 import javax.inject.Inject
@@ -140,7 +141,7 @@ class StudentDownloadRepository @Inject constructor(
      */
     private suspend fun cardFromServer(existing: StudentEntity?, code: String, serverUid: String?, schoolId: Int, now: Long): ServerCard? {
         if (existing != null && existing.rfidSyncStatus != StudentEntity.RFID_SYNCED) return null
-        val uid = serverUid?.trim()?.takeIf { it.isNotEmpty() }
+        val uid = serverUid?.let(::normalizeRfidUid)?.takeIf { it.isNotEmpty() }
         if (uid == null || uid == existing?.rfidCardNumber) return ServerCard(uid)
         val holder = database.studentDao().findAnyByRfid(uid)
         if (holder != null && holder.code != code) {
