@@ -123,6 +123,10 @@ class GateSyncManager @Inject constructor(
             // No active student with this code in the school, or bad input -
             // retrying can't help, so step past it.
             404, 422 -> markRejected(scan, now, message ?: "Student code not found on server")
+            // Route not registered on the server (Laravel's GET-only
+            // fallback answers an unknown POST with 405) - not this scan's
+            // fault, so keep it pending and uncounted until the backend has it.
+            405, 501 -> StepResult.Stop("Gate upload isn't set up on the school server yet - scans are kept on this device")
             else -> scheduleRetry(scan, now, message ?: "Server error (${e.code()})")
         }
     } catch (e: IOException) {
