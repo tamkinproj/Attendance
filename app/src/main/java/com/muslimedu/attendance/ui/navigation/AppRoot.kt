@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -34,9 +35,7 @@ import com.muslimedu.attendance.ui.screens.admin.GateAdminScreen
 import com.muslimedu.attendance.ui.screens.admin.SettingsScreen
 import com.muslimedu.attendance.ui.screens.admin.StudentListScreen
 import com.muslimedu.attendance.ui.screens.auth.LoginScreen
-import com.muslimedu.attendance.ui.screens.enrollment.FaceEnrollmentScreen
-import com.muslimedu.attendance.ui.screens.enrollment.PresetFaceTarget
-import com.muslimedu.attendance.ui.screens.enrollment.RfidEnrollmentScreen
+import com.muslimedu.attendance.ui.screens.enrollment.StudentRegistrationScreen
 import com.muslimedu.attendance.ui.screens.gate.GateDashboardScreen
 import com.muslimedu.attendance.ui.screens.gate.GateHistoryScreen
 import com.muslimedu.attendance.ui.screens.gate.GateScanScreen
@@ -46,7 +45,7 @@ import com.muslimedu.attendance.viewmodel.AdminPinViewModel
 import com.muslimedu.attendance.viewmodel.AuthState
 import com.muslimedu.attendance.viewmodel.AuthViewModel
 import com.muslimedu.attendance.viewmodel.GateDirection
-import com.muslimedu.attendance.viewmodel.PresetRfidTarget
+import com.muslimedu.attendance.viewmodel.RegistrationTarget
 
 /**
  * Admin sign-in -> sync -> gate.
@@ -87,8 +86,7 @@ private enum class Screen(val title: String, val requiresUnlock: Boolean) {
     AdminPin("Admin", false),
     AdminHome("Admin", true),
     Students("Students", true),
-    AssignCard("Assign RFID Card", true),
-    EnrollFace("Enroll Face", true),
+    Register("Register Card & Face", true),
     FaceSettings("Face Verification Settings", true),
     AuditLog("Audit Log", true),
     ChangePin("Change PIN", true),
@@ -107,12 +105,18 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
     val lastLoginAt by authViewModel.lastLoginAt.collectAsState()
     val pinViewModel: AdminPinViewModel = hiltViewModel()
 
-    var screen by remember { mutableStateOf(Screen.Gate) }
+    // Saveable: if the activity is ever recreated (rotation, theme change,
+    // the system restoring the app), the admin stays on the screen they
+    // were on instead of being dropped back on the dashboard.
+    var screen by rememberSaveable { mutableStateOf(Screen.Gate) }
     var adminUnlocked by remember { mutableStateOf(false) }
     var resetLoginOpenedAt by remember { mutableLongStateOf(0L) }
     var pinRequestId by remember { mutableLongStateOf(0L) }
-    var presetFaceTarget by remember { mutableStateOf<PresetFaceTarget?>(null) }
-    var presetRfidTarget by remember { mutableStateOf<PresetRfidTarget?>(null) }
+    // The wizard's student (null = its picker) and where back returns to.
+    // The request id is saveable so a recreated activity carries on mid-wizard.
+    var registerTarget by remember { mutableStateOf<RegistrationTarget?>(null) }
+    var registerRequestId by rememberSaveable { mutableLongStateOf(0L) }
+    var registerFromStudents by rememberSaveable { mutableStateOf(false) }
 
     fun navigate(to: Screen) {
         if (to == Screen.Gate) adminUnlocked = false
@@ -121,9 +125,17 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
         screen = to
     }
 
+    fun openRegistration(target: RegistrationTarget?) {
+        registerTarget = target
+        registerFromStudents = target != null
+        registerRequestId = System.nanoTime()
+        navigate(Screen.Register)
+    }
+
     fun parentOf(current: Screen): Screen = when (current) {
         Screen.Gate, Screen.GateIn, Screen.GateOut, Screen.GateHistory, Screen.AdminPin, Screen.AdminHome -> Screen.Gate
         Screen.ResetPinLogin -> Screen.AdminPin
+        Screen.Register -> if (registerFromStudents) Screen.Students else Screen.AdminHome
         else -> Screen.AdminHome
     }
 
@@ -201,31 +213,21 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
                 Screen.AdminHome -> GateAdminScreen(
                     user = user,
                     onStudents = { navigate(Screen.Students) },
-                    onAssignCard = {
-                        presetRfidTarget = null
-                        navigate(Screen.AssignCard)
-                    },
-                    onEnrollFace = {
-                        presetFaceTarget = null
-                        navigate(Screen.EnrollFace)
-                    },
+                    onRegister = { openRegistration(null) },
                     onSync = { navigate(Screen.Sync) },
                     onSettings = { navigate(Screen.FaceSettings) },
                     onAuditLog = { navigate(Screen.AuditLog) },
                     onChangePin = { navigate(Screen.ChangePin) },
                 )
                 Screen.Students -> StudentListScreen(
-                    onRegisterFace = { student ->
-                        presetFaceTarget = PresetFaceTarget(student, requestId = System.nanoTime())
-                        navigate(Screen.EnrollFace)
-                    },
-                    onAssignCard = { student ->
-                        presetRfidTarget = PresetRfidTarget(student, requestId = System.nanoTime())
-                        navigate(Screen.AssignCard)
-                    },
+                    onRegisterFace = { student -> openRegistration(RegistrationTarget(student, startAtFace = true)) },
+                    onAssignCard = { student -> openRegistration(RegistrationTarget(student, startAtFace = false)) },
                 )
-                Screen.AssignCard -> RfidEnrollmentScreen(presetTarget = presetRfidTarget)
-                Screen.EnrollFace -> FaceEnrollmentScreen(presetTarget = presetFaceTarget)
+                Screen.Register -> StudentRegistrationScreen(
+                    target = registerTarget,
+                    requestId = registerRequestId,
+                    onFinish = { navigate(parentOf(Screen.Register)) },
+                )
                 Screen.FaceSettings -> SettingsScreen()
                 Screen.AuditLog -> AuditLogScreen()
                 Screen.Sync -> SyncScreen(user = user, onLogout = authViewModel::logout)

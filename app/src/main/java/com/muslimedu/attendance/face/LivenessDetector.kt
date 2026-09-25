@@ -11,7 +11,7 @@ import com.google.mlkit.vision.face.Face
  * without pretending to defeat a determined attacker with e.g. a video replay.
  *
  * Only uses [Face.getAllLandmarks] - not contours, which
- * [MlKitFaceRecognizer]'s detector never enables (CONTOUR_MODE is a separate,
+ * [MobileFaceNetRecognizer]'s detector never enables (CONTOUR_MODE is a separate,
  * costlier detection pass this app has no other use for), so
  * [Face.getAllContours] is always empty here.
  */

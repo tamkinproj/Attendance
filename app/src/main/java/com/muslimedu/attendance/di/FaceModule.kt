@@ -1,25 +1,19 @@
 package com.muslimedu.attendance.di
 
 import com.muslimedu.attendance.face.FaceRecognizer
-import com.muslimedu.attendance.face.MlKitFaceRecognizer
+import com.muslimedu.attendance.face.MobileFaceNetRecognizer
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
-/**
- * Missing until now: [FaceRecognizer] is injected (by [MlKitFaceRecognizer]'s
- * only implementation) all over the place, but nothing told Hilt which
- * concrete class to hand out for it - a @Binds-less interface binding always
- * fails at compile time with a Dagger/MissingBinding error, it just never
- * surfaced locally since this sandbox can't run a real compile.
- */
+/** Which [FaceRecognizer] Hilt hands out: the MobileFaceNet model (replaced the landmark-ratio placeholder). */
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class FaceModule {
 
     @Binds
     @Singleton
-    abstract fun bindFaceRecognizer(impl: MlKitFaceRecognizer): FaceRecognizer
+    abstract fun bindFaceRecognizer(impl: MobileFaceNetRecognizer): FaceRecognizer
 }

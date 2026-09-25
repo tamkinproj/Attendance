@@ -1,45 +1,32 @@
 package com.muslimedu.attendance.face
 
 import android.graphics.Bitmap
-import android.graphics.PointF
 
 /**
- * Abstraction over face detection + verification, so the rest of the app
- * doesn't depend on ML Kit (or whatever embedding model eventually backs
- * [extractTemplate]) directly.
- *
- * IMPORTANT caveat, read before treating this as production anti-fraud:
- * ML Kit's Face Detection API (the only real, working piece of this
- * interface right now) does face *detection* - a bounding box, landmarks,
- * head-pose angles, eye-open/smiling probabilities - not face *recognition*.
- * It has no embedding output. Real 1:1 verification needs a separate
- * TensorFlow Lite face-embedding model (e.g. MobileFaceNet) run on the
- * cropped/aligned face, and no such model file exists in this project yet.
- * [MlKitFaceRecognizer.extractTemplate] is a geometric-landmark placeholder
- * standing in for that until a real model is bundled - see its doc comment.
+ * Face recognition behind one interface, so the rest of the app doesn't
+ * depend on ML Kit or the embedding model directly. The implementation is
+ * [MobileFaceNetRecognizer]: ML Kit face detection + a bundled MobileFaceNet
+ * TensorFlow Lite model. Liveness is still only [LivenessDetector]'s basic
+ * heuristic - a good photo or video of a student can still fool it.
  */
 interface FaceRecognizer {
-    /** Detects a face in [bitmap] and returns its landmarks/signals, or null if none found. */
-    suspend fun captureFace(bitmap: Bitmap): FaceData?
+    /** Detects the face in [bitmap] and turns it into a template, or null if no usable face was found. */
+    suspend fun enrollFace(bitmap: Bitmap): FaceTemplate?
 
-    /** Turns detected face data into a comparable [FaceTemplate]. */
-    suspend fun extractTemplate(faceData: FaceData): FaceTemplate
-
-    /** Detects a face in [liveFrame] and compares it against [storedTemplate]. Returns a 0-1 match score. */
+    /** Detects the face in [liveFrame] and compares it with [storedTemplate]. A 0-1 match score, or null if no face. */
     suspend fun verifyFace(liveFrame: Bitmap, storedTemplate: FaceTemplate): Float?
 
-    /** Convenience: detect + extract in one call, for enrollment. */
-    suspend fun enrollFace(bitmap: Bitmap): FaceTemplate?
-}
+    /** 0-1 similarity between two stored templates, on the same scale as [verifyFace]. */
+    fun similarity(a: FaceTemplate, b: FaceTemplate): Float
 
-data class FaceData(
-    val bitmap: Bitmap,
-    val landmarks: List<PointF>,
-    val leftEyeOpenProbability: Float?,
-    val rightEyeOpenProbability: Float?,
-    val headEulerAngleY: Float,
-    val livenessScore: Float,
-)
+    /**
+     * Whether [similarity] actually tells two different people apart. The
+     * duplicate-face check at enrollment (one face per student) only runs
+     * when this is true: on a recognizer that scores any two faces as a
+     * match it would refuse every student after the first.
+     */
+    val canTellPeopleApart: Boolean
+}
 
 data class FaceTemplate(
     val embedding: FloatArray,

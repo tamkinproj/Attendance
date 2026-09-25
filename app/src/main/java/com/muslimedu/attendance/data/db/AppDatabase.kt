@@ -23,7 +23,7 @@ import com.muslimedu.attendance.data.db.entities.StudentEntity
         AuditLogEntity::class,
         GateScanEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -107,6 +107,19 @@ abstract class AppDatabase : RoomDatabase() {
                     "DELETE FROM `students` WHERE `is_local_only` = 1 AND `code` IN ('STU001', 'STU002', 'STU003') " +
                         "AND `rfid_card_number` IN ('04:1A:2B:3C', '04:5D:6E:7F', '09:AA:BB:CC')",
                 )
+            }
+        }
+
+        /**
+         * Faces enrolled before the MobileFaceNet model are landmark ratios
+         * that can't be compared with the model's embeddings. They are kept,
+         * marked `landmark`, and ignored by every lookup (FaceTemplateDao),
+         * so those students show as "no face" until enrolled again - which
+         * replaces the old row.
+         */
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `face_templates` ADD COLUMN `model` TEXT NOT NULL DEFAULT 'landmark'")
             }
         }
     }

@@ -28,8 +28,15 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.MuslimEduAttendance">
 
+        <!-- configChanges: a keyboard-emulation RFID reader IS a USB keyboard.
+             Plugging or unplugging one is a keyboard/navigation configuration
+             change, which by default destroys and recreates the activity -
+             that threw the admin out of Assign RFID Card back to the gate
+             dashboard the moment the reader was connected. Compose handles
+             these changes itself, so the activity keeps running instead. -->
         <activity
             android:name=".MainActivity"
+            android:configChanges="keyboard|keyboardHidden|navigation"
             android:exported="true"
             android:theme="@style/Theme.MuslimEduAttendance">
             <intent-filter>

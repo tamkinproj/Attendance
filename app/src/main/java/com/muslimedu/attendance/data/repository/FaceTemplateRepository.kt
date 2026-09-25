@@ -24,7 +24,22 @@ sealed class FaceEnrollResult {
     data class Success(val livenessScore: Float) : FaceEnrollResult()
     data object NoFaceDetected : FaceEnrollResult()
     data class LivenessTooLow(val score: Float) : FaceEnrollResult()
+
+    /** The face matches the one enrolled for another student ([studentId]) - nothing was saved. */
+    data class AlreadyEnrolled(val studentId: Int, val score: Float) : FaceEnrollResult()
 }
+
+/**
+ * The other student whose face best matches, if that match reaches
+ * [threshold] - the gate's own match threshold, so a face is a duplicate
+ * exactly when the gate would accept it as that other student. [scores] is
+ * student id -> similarity; [ownStudentId] (a re-enrollment) never counts.
+ */
+internal fun closestOtherStudent(scores: Map<Int, Float>, ownStudentId: Int, threshold: Float): Pair<Int, Float>? =
+    scores.filterKeys { it != ownStudentId }
+        .maxByOrNull { it.value }
+        ?.takeIf { it.value >= threshold }
+        ?.toPair()
 
 /**
  * Match/liveness thresholds are admin-adjustable via [SettingsRepository]
@@ -58,6 +73,16 @@ class FaceTemplateRepository @Inject constructor(
         if (template.livenessScore < settingsRepository.livenessThreshold.value) {
             return FaceEnrollResult.LivenessTooLow(template.livenessScore)
         }
+        duplicateOf(schoolId, studentId, template)?.let { (otherStudentId, score) ->
+            auditLogger.log(
+                action = AuditLogger.ACTION_FACE_ENROLLED,
+                entityType = "student",
+                entityId = studentId,
+                details = "refused: matches student $otherStudentId (score=$score)",
+                success = false,
+            )
+            return FaceEnrollResult.AlreadyEnrolled(otherStudentId, score)
+        }
         val now = System.currentTimeMillis()
         faceTemplateDao.upsert(
             FaceTemplateEntity(
@@ -81,16 +106,30 @@ class FaceTemplateRepository @Inject constructor(
         return FaceEnrollResult.Success(template.livenessScore)
     }
 
+    /**
+     * One face per student: compares [template] with every other student's
+     * enrolled face in the school. Skipped while the recognizer can't tell
+     * people apart (see [FaceRecognizer.canTellPeopleApart]).
+     */
+    private suspend fun duplicateOf(schoolId: Int, studentId: Int, template: FaceTemplate): Pair<Int, Float>? {
+        if (!faceRecognizer.canTellPeopleApart) return null
+        val scores = faceTemplateDao.activeForSchool(schoolId)
+            .filter { it.studentId != studentId }
+            .associate { stored -> stored.studentId to faceRecognizer.similarity(template, stored.toTemplate()) }
+        return closestOtherStudent(scores, studentId, settingsRepository.minMatchScore.value)
+    }
+
+    private fun FaceTemplateEntity.toTemplate() = FaceTemplate(
+        embedding = bytesToFloatArray(encryptionHelper.decrypt(encryptedEmbedding)),
+        livenessScore = livenessScore,
+        encryptionVersion = encryptionVersion,
+    )
+
     suspend fun verify(schoolId: Int, studentId: Int, liveBitmap: Bitmap): FaceVerificationResult {
         val stored = faceTemplateDao.findForStudent(schoolId, studentId)
             ?: return FaceVerificationResult.NoTemplateEnrolled
 
-        val storedTemplate = FaceTemplate(
-            embedding = bytesToFloatArray(encryptionHelper.decrypt(stored.encryptedEmbedding)),
-            livenessScore = stored.livenessScore,
-            encryptionVersion = stored.encryptionVersion,
-        )
-        val score = faceRecognizer.verifyFace(liveBitmap, storedTemplate)
+        val score = faceRecognizer.verifyFace(liveBitmap, stored.toTemplate())
             ?: return FaceVerificationResult.NoFaceDetected
 
         return if (score >= settingsRepository.minMatchScore.value) {

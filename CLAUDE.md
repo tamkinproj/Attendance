@@ -80,8 +80,10 @@ this device), the same pieces the old gate screen used.
   - Same student + direction within 60s (a recorded one) -> "Already
     recorded", no face step, nothing new saved.
   - The view model outlives the screen, so it ignores the reader unless
-    the screen is open (`enter()`/`exit()`) - a tap on Assign Card must not
-    record gate attendance.
+    the screen is open (`enter()`/`exit()`) - a tap in the registration
+    wizard must not record gate attendance. The wizard does the same the
+    other way round (`StudentRegistrationViewModel.enter()`/`leave()`), so a
+    card tapped at the gate is never registered to a student left open there.
   - Back with face-confirmed records not yet synced -> dialog "Unsaved
     Attendance Records": **Save & Sync** (upload now; if offline they stay
     Pending Sync and go up automatically), **Leave Without Syncing**,
@@ -110,16 +112,70 @@ this device), the same pieces the old gate screen used.
   network returns** (`GateSyncScheduler`: a one-off `SyncWorker` with a
   CONNECTED constraint, queued on every record). The UI shows Pending Sync
   -> Synchronizing -> Synced.
-- **RFID registration** (Admin > Assign RFID Card / Students, PIN-locked):
-  attaches a physically read card to an existing student - never creates
-  one. A card registered to another student is refused (deactivate it
-  there first); a student who already has a card is asked "Replace card?"
-  (the old one is deactivated). Students list: card number + sync state,
-  and Replace / Deactivate. Every change goes to the server registry
-  (pending until sent; a refusal shows its reason). The student download
-  applies the server's cards (`rfid_managed: true`) but never overwrites a
-  change on this device that hasn't been sent.
-- Admin screens (Students, Assign Card, Enroll Face, Face Settings, Audit
+- **Register Card & Face** (Admin > Register Card & Face, PIN-locked) is
+  one wizard, not separate card and face screens (the user asked for it
+  that way): **1 Student** (picker with search and each student's Card /
+  Face status) -> **2 Card** -> **3 Face** -> **4 Done** (summary, "Register
+  next student" / "Finish"). `StudentRegistrationScreen` +
+  `StudentRegistrationViewModel`; the old `RfidEnrollmentScreen` /
+  `FaceEnrollmentScreen` and their view models were removed.
+  - Card: attaches a physically read card to an existing student - never
+    creates one. A card registered to another student is refused (tap a
+    different one, or deactivate it there first) and the step keeps
+    listening; a student who already has a card can **Keep this card** or
+    tap a new one and confirm "Replace card?" (the old one is deactivated).
+    The card is saved the moment it's read, then the wizard moves straight
+    on to the face while the upload to the server registry finishes (its
+    result shows on the card summary).
+  - Face: the gate's own live auto-capture (`LiveFaceCaptureView`) +
+    `FaceTemplateRepository.enroll`. A student who already has a face can
+    keep it or re-enroll; "Skip face for now" finishes without one (the
+    Done step warns that the gate refuses them until a face is enrolled).
+  - Students list: card number + sync state; the card icon opens Replace /
+    Deactivate (Replace opens the wizard at the card step), the face icon
+    opens the wizard at the face step (card step if there's no card yet).
+    Back from a wizard opened there returns to Students.
+  - Every card change goes to the server registry (pending until sent; a
+    refusal shows its reason). The student download applies the server's
+    cards (`rfid_managed: true`) but never overwrites a change on this
+    device that hasn't been sent.
+- **One face per student** - `FaceTemplateRepository.enroll` compares the
+  new face with every other student's enrolled face in the school and
+  refuses a match ("This face is already enrolled for <name> (<ID>)",
+  `FaceEnrollResult.AlreadyEnrolled`, logged in the Audit Log). A match
+  means a score at the gate's own match threshold (Face Settings, default
+  0.75): exactly when the gate would accept the face as that other student.
+  Runs only when `FaceRecognizer.canTellPeopleApart` is true - it is for
+  the MobileFaceNet recognizer below; the old landmark placeholder scored
+  any two faces ~0.99 and would have refused every student after the first.
+- **Face recognition = MobileFaceNet** (`MobileFaceNetRecognizer`, replaced
+  the landmark-ratio placeholder `MlKitFaceRecognizer`, which could not
+  tell people apart). ML Kit finds the face + eyes/mouth corners ->
+  `FaceAlignment` fits a similarity transform onto the standard ArcFace
+  112x112 layout (sides picked by x, so mirrored frames align the same) ->
+  RGB `(v - 127.5) / 128` -> `assets/mobilefacenet.tflite` (input fixed at
+  batch 2, so the face is fed twice; output 192-d, L2-normalised) -> score
+  `(1 + cosine) / 2` (`FaceAlignment.matchScore`, ~0.5 different people,
+  0.9+ same person). Model: MIT (syaringan357/Android-MobileFaceNet-MTCNN-
+  FaceAntiSpoofing), converted from sirius-ai/MobileFaceNet_TF (Apache-2.0);
+  source, SHA-256 and both licences in `assets/licenses/mobilefacenet-NOTICE.txt`
+  (the SHA is pinned by `FaceAlignmentTest`). The `.tflite` is stored
+  uncompressed (`androidResources.noCompress`) because it is memory-mapped.
+  - Checked in the sandbox with the same alignment/normalisation in Python
+    (tflite-runtime, MediaPipe for the landmarks) on 2 people x 2 photos:
+    same person 0.91-0.93, different people 0.46-0.55. **Not checked on a
+    phone camera** - tune Face Settings if real students get refused.
+  - Default match threshold is now **0.75** (cosine 0.5), saved under a new
+    prefs key (`min_match_score_mobilefacenet`) so a value chosen for the
+    old matcher is dropped.
+  - Old faces: `MIGRATION_8_9` adds `face_templates.model` (`landmark` for
+    existing rows, `mobilefacenet` for new). Every `FaceTemplateDao` lookup
+    only sees `mobilefacenet` rows, so students enrolled before this show
+    "no face" (and the gate refuses them) until re-enrolled in the wizard,
+    which replaces the old row. Old rows are kept, not deleted.
+  - Liveness is unchanged: still `LivenessDetector`'s eye-open heuristic,
+    so a good photo/video of the student can still pass the camera step.
+- Admin screens (Register Card & Face, Students, Face Settings, Audit
   Log, Sync & Account, Change PIN) sit behind a **device PIN**
   (`AdminPinManager`: salted PBKDF2 hash in Keystore-backed encrypted prefs,
   5 wrong tries -> 60s lockout, counted persistently). They relock when you
@@ -365,6 +421,9 @@ com.muslimedu.attendance/
       camera preview and a status line; a failed verification re-arms the
       same camera for another automatic attempt. See the caveat below for
       exactly what is and isn't verified here.)
+
+**Superseded**: the placeholder below was replaced by a real MobileFaceNet
+model - see "Face recognition = MobileFaceNet" near the top. Kept for history.
 
 **Important caveat on the above**: ML Kit's Face Detection API does face
 *detection* (bounding box, landmarks, eye/smile probabilities) - it has no
@@ -868,7 +927,7 @@ adb shell am start -n com.muslimedu.attendance/.MainActivity
 All versions centralized in `gradle/libs.versions.toml`:
 - AndroidX + Jetpack: Core, Lifecycle, Compose, Room, WorkManager, Hilt
 - Networking: Retrofit, OkHttp, Gson
-- ML: ML Kit Face Detection, TensorFlow Lite
+- ML: ML Kit Face Detection, TensorFlow Lite (runs the bundled MobileFaceNet model)
 - Camera: CameraX (core, camera2, lifecycle, view) - embedded live capture, see `LiveFaceCaptureView`
 - Security: Tink, Android Keystore
 - Testing: JUnit, Espresso, Compose Test
@@ -917,6 +976,19 @@ Two separate causes, both fixed:
    uninstall - which wipes the device's cards, faces and unsynced scans.
    A fixed signing key (stored as a GitHub secret) would fix that; not set
    up yet.
+
+### Plugging in the reader throws you back to the dashboard
+Symptom: on Assign RFID Card (now the wizard's card step, "Tap <name>'s card on the reader"), plugging
+in the USB reader jumped straight to the gate dashboard, so the card could
+never be assigned. A keyboard-emulation reader *is* a USB keyboard, and
+attaching one is a `keyboard`/`keyboardHidden`/`navigation` configuration
+change - `MainActivity` didn't declare those, so Android destroyed and
+recreated it, and `AppRoot`'s screen state (plain `remember`) restarted at
+`Screen.Gate`. Fixed: the activity declares
+`configChanges="keyboard|keyboardHidden|navigation"` (Compose handles them,
+nothing is recreated), and the current screen is `rememberSaveable` so any
+other recreation (rotation, theme) keeps the admin where they were. The
+"Tap card" step also shows the reader's status now.
 
 ### Scanning a real card does nothing
 There is no simulated reader in any build any more (`MockRfidReader` and

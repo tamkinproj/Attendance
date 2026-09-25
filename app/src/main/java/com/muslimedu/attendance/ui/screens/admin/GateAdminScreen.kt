@@ -11,9 +11,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudSync
-import androidx.compose.material.icons.filled.CreditCard
-import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.HowToReg
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Tune
@@ -44,8 +43,7 @@ private data class AdminAction(val icon: ImageVector, val label: String, val col
 fun GateAdminScreen(
     user: UserDto,
     onStudents: () -> Unit,
-    onAssignCard: () -> Unit,
-    onEnrollFace: () -> Unit,
+    onRegister: () -> Unit,
     onSync: () -> Unit,
     onSettings: () -> Unit,
     onAuditLog: () -> Unit,
@@ -74,9 +72,8 @@ fun GateAdminScreen(
         SectionHeader("Students & cards", modifier = Modifier.padding(top = 24.dp))
         ActionGrid(
             listOf(
+                AdminAction(Icons.Filled.HowToReg, "Register Card & Face", AccentGold, onRegister),
                 AdminAction(Icons.Filled.People, "Students", BrandPrimary, onStudents),
-                AdminAction(Icons.Filled.CreditCard, "Assign Card", AccentGold, onAssignCard),
-                AdminAction(Icons.Filled.Face, "Enroll Face", AccentSlate, onEnrollFace),
             ),
         )
 
