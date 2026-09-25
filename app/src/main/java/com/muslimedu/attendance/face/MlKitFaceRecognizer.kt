@@ -57,6 +57,17 @@ class MlKitFaceRecognizer @Inject constructor() : FaceRecognizer {
         return extractTemplate(data)
     }
 
+    override fun similarity(a: FaceTemplate, b: FaceTemplate): Float =
+        cosineSimilarity(a.embedding, b.embedding).coerceIn(0f, 1f)
+
+    /**
+     * False: every entry of [geometricEmbedding] is a positive distance ratio
+     * of about the same size for any human face, so the cosine between two
+     * different people's vectors lands close to 1 - well above the 0.85
+     * match threshold. Duplicate-face checking needs a real embedding model.
+     */
+    override val canTellPeopleApart: Boolean = false
+
     private suspend fun detectFirstFace(bitmap: Bitmap): Face? = suspendCancellableCoroutine { continuation ->
         val image = InputImage.fromBitmap(bitmap, 0)
         detector.process(image)

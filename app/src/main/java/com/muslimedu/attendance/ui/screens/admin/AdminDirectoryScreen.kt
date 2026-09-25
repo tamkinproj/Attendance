@@ -58,9 +58,8 @@ import com.muslimedu.attendance.viewmodel.AdminDirectoryViewModel
  * screen (see AppRoot's own doc comment - "one level below the scan screen"
  * is deliberately as far as its back stack goes today), so a real four-level
  * drill-down needs its own in-screen back affordance regardless. Follows the
- * same convention [com.muslimedu.attendance.ui.screens.enrollment.RfidEnrollmentScreen]
- * and [com.muslimedu.attendance.ui.screens.enrollment.FaceEnrollmentScreen]
- * already use for their own internal Picker/Listening/Result steps.
+ * same convention [com.muslimedu.attendance.ui.screens.enrollment.StudentRegistrationScreen]
+ * uses for its own internal Student/Card/Face/Done steps.
  */
 @Composable
 fun AdminDirectoryScreen(

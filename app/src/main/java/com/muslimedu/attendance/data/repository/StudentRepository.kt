@@ -88,8 +88,10 @@ class StudentRepository @Inject constructor(
         )
     }
 
-    suspend fun reload(student: StudentEntity): StudentEntity? =
-        studentDao.findBySchoolAndStudentId(student.schoolId, student.studentId)
+    suspend fun reload(student: StudentEntity): StudentEntity? = find(student.schoolId, student.studentId)
+
+    suspend fun find(schoolId: Int, studentId: Int): StudentEntity? =
+        studentDao.findBySchoolAndStudentId(schoolId, studentId)
 
     /**
      * Adds a student by hand on this device. There's no backend endpoint to

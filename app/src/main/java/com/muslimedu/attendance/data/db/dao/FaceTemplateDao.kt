@@ -19,6 +19,9 @@ interface FaceTemplateDao {
     @Query("SELECT * FROM face_templates WHERE school_id = :schoolId AND student_id = :studentId AND is_active = 1 LIMIT 1")
     suspend fun findForStudent(schoolId: Int, studentId: Int): FaceTemplateEntity?
 
+    @Query("SELECT * FROM face_templates WHERE school_id = :schoolId AND is_active = 1")
+    suspend fun activeForSchool(schoolId: Int): List<FaceTemplateEntity>
+
     @Query("SELECT COUNT(*) FROM face_templates WHERE school_id = :schoolId AND is_active = 1")
     suspend fun countActiveForSchool(schoolId: Int): Int
 

@@ -80,8 +80,10 @@ this device), the same pieces the old gate screen used.
   - Same student + direction within 60s (a recorded one) -> "Already
     recorded", no face step, nothing new saved.
   - The view model outlives the screen, so it ignores the reader unless
-    the screen is open (`enter()`/`exit()`) - a tap on Assign Card must not
-    record gate attendance.
+    the screen is open (`enter()`/`exit()`) - a tap in the registration
+    wizard must not record gate attendance. The wizard does the same the
+    other way round (`StudentRegistrationViewModel.enter()`/`leave()`), so a
+    card tapped at the gate is never registered to a student left open there.
   - Back with face-confirmed records not yet synced -> dialog "Unsaved
     Attendance Records": **Save & Sync** (upload now; if offline they stay
     Pending Sync and go up automatically), **Leave Without Syncing**,
@@ -110,16 +112,53 @@ this device), the same pieces the old gate screen used.
   network returns** (`GateSyncScheduler`: a one-off `SyncWorker` with a
   CONNECTED constraint, queued on every record). The UI shows Pending Sync
   -> Synchronizing -> Synced.
-- **RFID registration** (Admin > Assign RFID Card / Students, PIN-locked):
-  attaches a physically read card to an existing student - never creates
-  one. A card registered to another student is refused (deactivate it
-  there first); a student who already has a card is asked "Replace card?"
-  (the old one is deactivated). Students list: card number + sync state,
-  and Replace / Deactivate. Every change goes to the server registry
-  (pending until sent; a refusal shows its reason). The student download
-  applies the server's cards (`rfid_managed: true`) but never overwrites a
-  change on this device that hasn't been sent.
-- Admin screens (Students, Assign Card, Enroll Face, Face Settings, Audit
+- **Register Card & Face** (Admin > Register Card & Face, PIN-locked) is
+  one wizard, not separate card and face screens (the user asked for it
+  that way): **1 Student** (picker with search and each student's Card /
+  Face status) -> **2 Card** -> **3 Face** -> **4 Done** (summary, "Register
+  next student" / "Finish"). `StudentRegistrationScreen` +
+  `StudentRegistrationViewModel`; the old `RfidEnrollmentScreen` /
+  `FaceEnrollmentScreen` and their view models were removed.
+  - Card: attaches a physically read card to an existing student - never
+    creates one. A card registered to another student is refused (tap a
+    different one, or deactivate it there first) and the step keeps
+    listening; a student who already has a card can **Keep this card** or
+    tap a new one and confirm "Replace card?" (the old one is deactivated).
+    The card is saved the moment it's read, then the wizard moves straight
+    on to the face while the upload to the server registry finishes (its
+    result shows on the card summary).
+  - Face: the gate's own live auto-capture (`LiveFaceCaptureView`) +
+    `FaceTemplateRepository.enroll`. A student who already has a face can
+    keep it or re-enroll; "Skip face for now" finishes without one (the
+    Done step warns that the gate refuses them until a face is enrolled).
+  - Students list: card number + sync state; the card icon opens Replace /
+    Deactivate (Replace opens the wizard at the card step), the face icon
+    opens the wizard at the face step (card step if there's no card yet).
+    Back from a wizard opened there returns to Students.
+  - Every card change goes to the server registry (pending until sent; a
+    refusal shows its reason). The student download applies the server's
+    cards (`rfid_managed: true`) but never overwrites a change on this
+    device that hasn't been sent.
+- **One face per student** - `FaceTemplateRepository.enroll` compares the
+  new face with every other student's enrolled face in the school and
+  refuses a match ("This face is already enrolled for <name> (<ID>)",
+  `FaceEnrollResult.AlreadyEnrolled`, logged in the Audit Log). A match
+  means a score at the gate's own match threshold (Face Settings, default
+  0.85): exactly when the gate would accept the face as that other student.
+  **Off until a real face-recognition model is installed**: it only runs
+  when `FaceRecognizer.canTellPeopleApart` is true, and the current
+  `MlKitFaceRecognizer` says false. Its landmark-ratio "embedding" is all
+  positive ratios of about the same size for every face, so the cosine
+  between two *different* people comes out near 1, above any usable
+  threshold: the check would refuse every student after the first. The
+  same weakness means the gate's face confirmation can't really tell
+  students apart yet either. Fix: bundle a real embedding model (e.g.
+  MobileFaceNet `.tflite`, TensorFlow Lite is already a dependency) behind
+  `FaceRecognizer`, return true there, and have every face re-enrolled
+  (old landmark templates aren't comparable). Downloading a third-party
+  model was blocked in the session that built this, so it is waiting on
+  the user.
+- Admin screens (Register Card & Face, Students, Face Settings, Audit
   Log, Sync & Account, Change PIN) sit behind a **device PIN**
   (`AdminPinManager`: salted PBKDF2 hash in Keystore-backed encrypted prefs,
   5 wrong tries -> 60s lockout, counted persistently). They relock when you
@@ -919,7 +958,7 @@ Two separate causes, both fixed:
    up yet.
 
 ### Plugging in the reader throws you back to the dashboard
-Symptom: on Assign RFID Card ("Tap <name>'s card on the reader"), plugging
+Symptom: on Assign RFID Card (now the wizard's card step, "Tap <name>'s card on the reader"), plugging
 in the USB reader jumped straight to the gate dashboard, so the card could
 never be assigned. A keyboard-emulation reader *is* a USB keyboard, and
 attaching one is a `keyboard`/`keyboardHidden`/`navigation` configuration
