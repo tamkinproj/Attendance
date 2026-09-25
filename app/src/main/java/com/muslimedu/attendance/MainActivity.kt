@@ -45,9 +45,14 @@ class MainActivity : ComponentActivity() {
      * UID as digits + Enter; the OS delivers that as ordinary key events to
      * whichever view has focus. Intercepting here means the reader works
      * without needing a specific view/EditText to hold focus.
+     *
+     * Except while a text field is focused (sign-in, PIN, add student):
+     * those keys are someone typing, so they go to the field. The gate and
+     * card screens have no text fields, so the reader is never blocked there.
      */
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        if (::rfidManager.isInitialized && rfidManager.dispatchKeyEvent(event)) {
+        val typingInField = currentFocus?.onCheckIsTextEditor() == true
+        if (!typingInField && ::rfidManager.isInitialized && rfidManager.dispatchKeyEvent(event)) {
             return true
         }
         return super.dispatchKeyEvent(event)

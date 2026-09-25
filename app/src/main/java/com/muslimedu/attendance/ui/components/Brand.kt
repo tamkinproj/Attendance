@@ -13,7 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -48,14 +48,15 @@ fun BrandBackdrop(modifier: Modifier = Modifier, content: @Composable BoxScope.(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .drawBehind {
-                    drawRect(
-                        Brush.radialGradient(
-                            colors = listOf(BrandTeal.copy(alpha = 0.18f), Color.Transparent),
-                            center = Offset(size.width, 0f),
-                            radius = size.maxDimension * 0.75f,
-                        ),
+                // Cached per size: the gradient isn't rebuilt on every frame
+                // while the keyboard slides in and the screen redraws.
+                .drawWithCache {
+                    val glow = Brush.radialGradient(
+                        colors = listOf(BrandTeal.copy(alpha = 0.18f), Color.Transparent),
+                        center = Offset(size.width, 0f),
+                        radius = size.maxDimension * 0.75f,
                     )
+                    onDrawBehind { drawRect(glow) }
                 },
             content = content,
         )

@@ -883,13 +883,40 @@ To add a dependency:
 - Update `device_filter.xml` with correct IDs
 - Request USB permission at runtime (Android 6.0+)
 
-### Scanning a real card does nothing
-Debug builds used to swap the real readers out for `MockRfidReader` entirely,
-so the debug APK - the one actually installed for testing - could never read a
-card. The mock is now merged in *alongside* the real readers on debug builds
-(`RfidReaderFactory`), so hardware and the "Simulate Scan" button both work.
+### Can't type the admin PIN / typing and taps feel laggy
+Two separate causes, both fixed:
 
-Other things that produce a silent no-op, all fixed:
+1. **The PIN field couldn't be typed in.** `MainActivity.dispatchKeyEvent`
+   hands every key event to `KeyboardEmulationRfidReader` (USB readers
+   "type" the card UID), and it consumed *every* letter/digit key-down from
+   any source. Gboard's number pad (`KeyboardType.NumberPassword`) sends
+   each digit as a key event rather than committed text, so the reader ate
+   them all. Now the reader ignores on-screen/virtual keyboard input
+   (`isSoftKeyboardInput`: `VIRTUAL_KEYBOARD` device, `FLAG_SOFT_KEYBOARD`,
+   or a virtual `InputDevice`), and the activity doesn't offer keys to the
+   reader at all while a text field is focused
+   (`currentFocus.onCheckIsTextEditor()`). The gate and card screens have no
+   text fields, so the reader still works there.
+2. **Lag everywhere** came from running the *debug* APK: the release build
+   had no signing config, so CI's release APK was unsigned and couldn't be
+   installed. Debuggable apps skip ART's optimizations and Compose's
+   baseline profiles, and on a budget phone typing/taps visibly lag. The
+   release build is now signed with the debug key (sideloading only - use a
+   real key before any store) and CI uploads it as
+   `apk-release-install-this`. Install that one on the gate phone.
+
+   CI creates a fresh debug key on every run, so each new APK is signed
+   differently and won't install over the previous one without an
+   uninstall - which wipes the device's cards, faces and unsynced scans.
+   A fixed signing key (stored as a GitHub secret) would fix that; not set
+   up yet.
+
+### Scanning a real card does nothing
+There is no simulated reader in any build any more (`MockRfidReader` and
+Simulate Scan were removed) - only the keyboard-emulation and raw-USB
+readers in `RfidReaderFactory`.
+
+Things that used to produce a silent no-op, all fixed:
 - Keyboard-emulation readers that type the UID as **hex** were ignored, because
   only digit keycodes were accepted. `KeyboardEmulationRfidReader` now takes
   any letter or digit via `unicodeChar`, ends on Enter **or** Tab, and starts a
