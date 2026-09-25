@@ -1,49 +1,57 @@
 package com.muslimedu.attendance.ui.screens.gate
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudUpload
-import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.muslimedu.attendance.rfid.ReaderStatus
 import com.muslimedu.attendance.ui.components.BrandLogo
+import com.muslimedu.attendance.ui.theme.AccentBlue
 import com.muslimedu.attendance.ui.theme.AccentGold
 import com.muslimedu.attendance.ui.theme.AccentRed
 import com.muslimedu.attendance.ui.theme.AccentSlate
@@ -57,14 +65,22 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Date
 
+private val CardShape = RoundedCornerShape(24.dp)
+
 /**
  * The gate's home. Scanning doesn't start here: the attendant first picks
  * Coming In or Going Out, which opens that direction's own RFID screen
  * ([GateScanScreen]). Below: whether records have reached the web admin, and
  * the most recent records with their RFID/face/sync status.
+ *
+ * Draws its own header (large title + the admin button) instead of the app
+ * bar. Colors are the brand accents laid over the surface color, so the soft
+ * tinted cards work in dark mode too.
  */
 @Composable
 fun GateDashboardScreen(
+    adminName: String,
+    onAdmin: () -> Unit,
     onOpen: (GateDirection) -> Unit,
     onHistory: () -> Unit,
     viewModel: GateDashboardViewModel = hiltViewModel(),
@@ -81,17 +97,20 @@ fun GateDashboardScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item { SummaryHeader(today, unsynced) }
+        item { Header(adminName, onAdmin) }
+
+        item { SummaryCard(today, unsynced) }
 
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                DirectionButton(GateDirection.IN, Modifier.weight(1f)) { onOpen(GateDirection.IN) }
-                DirectionButton(GateDirection.OUT, Modifier.weight(1f)) { onOpen(GateDirection.OUT) }
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                DirectionCard(GateDirection.IN, Modifier.weight(1f)) { onOpen(GateDirection.IN) }
+                DirectionCard(GateDirection.OUT, Modifier.weight(1f)) { onOpen(GateDirection.OUT) }
             }
-            ReaderLine(readerStatus, modifier = Modifier.padding(top = 10.dp, start = 4.dp))
+            // Only speaks up when there's a problem - a working reader needs no label.
+            if (!readerStatus.connected) ReaderWarning(readerStatus, Modifier.padding(top = 10.dp, start = 4.dp))
         }
 
         item {
@@ -107,24 +126,23 @@ fun GateDashboardScreen(
         }
 
         item {
-            Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("RFID scan history", style = MaterialTheme.typography.titleMedium)
+                    Text("RFID scan history", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(
                         "Most recent records at this gate",
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                TextButton(onClick = onHistory) { Text("View all") }
+                Surface(onClick = onHistory, color = Color.Transparent, shape = RoundedCornerShape(12.dp)) {
+                    Row(modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("View all", style = MaterialTheme.typography.titleMedium, color = BrandPrimary, fontWeight = FontWeight.SemiBold)
+                        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = BrandPrimary, modifier = Modifier.size(20.dp))
+                    }
+                }
             }
-            if (recent.isEmpty()) {
-                Text(
-                    "No scans yet. Choose Coming In or Going Out to start.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
+            if (recent.isEmpty()) EmptyHistory()
         }
 
         items(recent, key = { it.id }) { scan -> GateRecordRow(scan, isSyncing, showDate = true) }
@@ -132,78 +150,163 @@ fun GateDashboardScreen(
 }
 
 @Composable
-private fun SummaryHeader(today: GateTodayStats, unsynced: Int) {
-    val date = remember { LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM")) }
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.large)
-            .background(Brush.linearGradient(listOf(BrandPrimary, BrandTeal))),
-    ) {
-        BrandLogo(
-            size = 140.dp,
-            tint = Color.White,
-            modifier = Modifier.align(Alignment.CenterEnd).offset(x = 36.dp).alpha(0.14f),
-        )
-        Column(modifier = Modifier.padding(20.dp)) {
-            Text(date, color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.bodyMedium)
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                HeaderStat(today.onCampus, "On campus", Modifier.weight(1f))
-                HeaderStat(today.left, "Left", Modifier.weight(1f))
-                HeaderStat(unsynced, "Pending sync", Modifier.weight(1f))
-            }
-            if (today.failed > 0) {
-                Text(
-                    "${today.failed} failed face check(s) today - not recorded",
-                    color = Color.White.copy(alpha = 0.9f),
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(top = 10.dp),
+private fun Header(adminName: String, onAdmin: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .background(tint(BrandTeal, 0.14f), RoundedCornerShape(16.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            BrandLogo(size = 36.dp)
+        }
+        Column(modifier = Modifier.weight(1f).padding(start = 14.dp)) {
+            Text("Gate Attendance", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text(adminName, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Surface(
+            onClick = onAdmin,
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            modifier = Modifier.size(52.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    Icons.Filled.Person,
+                    contentDescription = "Admin",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(28.dp),
                 )
             }
         }
     }
 }
 
+/** The brand accent laid over the current surface - a soft tint in light mode, a deep one in dark. */
 @Composable
-private fun HeaderStat(value: Int, label: String, modifier: Modifier = Modifier) {
-    Surface(modifier = modifier, color = Color.White.copy(alpha = 0.16f), shape = MaterialTheme.shapes.medium) {
-        Column(
-            modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+private fun tint(color: Color, alpha: Float): Color = color.copy(alpha = alpha).compositeOver(MaterialTheme.colorScheme.surface)
+
+@Composable
+private fun SummaryCard(today: GateTodayStats, unsynced: Int) {
+    val date = remember { LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM")) }
+    val top = tint(BrandTeal, 0.08f)
+    val bottom = tint(BrandTeal, 0.18f)
+    val ring = BrandTeal.copy(alpha = 0.10f)
+    Card(
+        shape = CardShape,
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        border = BorderStroke(1.dp, tint(BrandTeal, 0.16f)),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .drawWithCache {
+                    val fill = Brush.linearGradient(listOf(top, bottom), start = Offset.Zero, end = Offset(size.width, size.height))
+                    onDrawBehind {
+                        drawRect(fill)
+                        // Two soft arcs in the top-right corner, echoing the mockup's glass rings.
+                        val center = Offset(size.width * 1.02f, size.height * 0.95f)
+                        drawCircle(ring, radius = size.height * 0.95f, center = center, style = Stroke(width = size.height * 0.10f))
+                        drawCircle(ring, radius = size.height * 0.62f, center = center)
+                    }
+                },
         ) {
-            Text("$value", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = Color.White)
-            Text(label, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.9f))
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 22.dp)) {
+                Text(date, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 18.dp).height(IntrinsicSize.Min),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Stat(today.onCampus, "On campus", BrandPrimary, Modifier.weight(1f))
+                    StatDivider()
+                    Stat(today.left, "Left", AccentBlue, Modifier.weight(1f))
+                    StatDivider()
+                    Stat(unsynced, "Pending sync", AccentGold, Modifier.weight(1f))
+                }
+                if (today.failed > 0) {
+                    Text(
+                        "${today.failed} failed face check(s) today - not recorded",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AccentRed,
+                        modifier = Modifier.padding(top = 14.dp),
+                    )
+                }
+            }
         }
     }
 }
 
-/** A big, colored tile per direction - the only way into scanning. */
 @Composable
-private fun DirectionButton(direction: GateDirection, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun Stat(value: Int, label: String, dot: Color, modifier: Modifier = Modifier) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("$value", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
+        Row(modifier = Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(modifier = Modifier.size(8.dp).background(dot, CircleShape))
+            Text(
+                label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 6.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatDivider() {
+    Box(
+        modifier = Modifier
+            .width(1.dp)
+            .fillMaxHeight()
+            .padding(vertical = 6.dp)
+            .background(MaterialTheme.colorScheme.outlineVariant),
+    )
+}
+
+/** Soft tinted card per direction - the only way into scanning. */
+@Composable
+private fun DirectionCard(direction: GateDirection, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val color = direction.color()
+    val top = tint(color, 0.05f)
+    val bottom = tint(color, 0.13f)
     Card(
         onClick = onClick,
-        modifier = modifier.height(132.dp),
-        colors = CardDefaults.cardColors(containerColor = color),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = CardShape,
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        border = BorderStroke(1.dp, tint(color, 0.14f)),
+        modifier = modifier,
     ) {
         Column(
-            modifier = Modifier.fillMaxSize().padding(16.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier
+                .fillMaxWidth()
+                .drawWithCache {
+                    val fill = Brush.verticalGradient(listOf(top, bottom))
+                    onDrawBehind { drawRect(fill) }
+                }
+                .padding(18.dp),
         ) {
             Box(
-                modifier = Modifier.size(44.dp).background(Color.White.copy(alpha = 0.2f), CircleShape),
+                modifier = Modifier.size(60.dp).background(color.copy(alpha = 0.14f), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(directionIcon(direction.apiValue), contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+                Icon(directionIcon(direction.apiValue), contentDescription = null, tint = color, modifier = Modifier.size(30.dp))
             }
-            Column {
-                Text(direction.label, color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Text("RFID + face check", color = Color.White.copy(alpha = 0.9f), style = MaterialTheme.typography.bodySmall)
+            Row(modifier = Modifier.padding(top = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    direction.label,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            Text(
+                "RFID + face check",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
         }
     }
 }
@@ -227,6 +330,9 @@ internal fun ReaderLine(status: ReaderStatus, modifier: Modifier = Modifier, onD
 }
 
 @Composable
+private fun ReaderWarning(status: ReaderStatus, modifier: Modifier = Modifier) = ReaderLine(status, modifier)
+
+@Composable
 private fun SyncStatusCard(
     unsynced: Int,
     failedUploads: Int,
@@ -236,41 +342,67 @@ private fun SyncStatusCard(
     message: String?,
     onSyncNow: () -> Unit,
 ) {
-    val (icon, color, title) = when {
-        isSyncing -> Triple(Icons.Filled.Sync, AccentSlate, "Synchronizing...")
-        unsynced == 0 -> Triple(Icons.Filled.CloudDone, BrandPrimary, "All attendance synced")
-        !isOnline -> Triple(Icons.Filled.CloudOff, AccentGold, "Offline - $unsynced record(s) pending sync")
-        else -> Triple(Icons.Filled.CloudUpload, AccentGold, "$unsynced record(s) pending sync")
+    val allSynced = unsynced == 0 && !isSyncing
+    val color = when {
+        isSyncing -> AccentSlate
+        allSynced -> BrandPrimary
+        else -> AccentGold
+    }
+    val title = when {
+        isSyncing -> "Synchronizing..."
+        allSynced -> "All attendance synced"
+        !isOnline -> "Offline - $unsynced pending"
+        else -> "$unsynced record(s) pending sync"
     }
     val subtitle = when {
         !isOnline && unsynced > 0 -> "Saved on this device. They sync automatically when the connection returns."
-        lastSyncedAt != null -> "Last synced ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(lastSyncedAt))}"
+        lastSyncedAt != null && allSynced -> "Last synced ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(lastSyncedAt))}"
         else -> "Records sync with the web admin automatically."
     }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        shape = CardShape,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
-                    modifier = Modifier.size(40.dp).background(color.copy(alpha = 0.12f), CircleShape),
+                    modifier = Modifier.size(56.dp).background(color.copy(alpha = 0.12f), CircleShape),
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (isSyncing) {
-                        CircularProgressIndicator(color = color, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
-                    } else {
-                        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
+                    Box(modifier = Modifier.size(32.dp).background(color, CircleShape), contentAlignment = Alignment.Center) {
+                        when {
+                            isSyncing -> CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                            allSynced -> Icon(Icons.Filled.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                            !isOnline -> Icon(Icons.Filled.CloudOff, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            else -> Icon(Icons.Filled.CloudUpload, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        }
                     }
                 }
-                Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
-                    Text("Sync status", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Column(modifier = Modifier.weight(1f).padding(start = 14.dp, end = 8.dp)) {
+                    Text("Sync status", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                     Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                OutlinedButton(onClick = onSyncNow, enabled = !isSyncing, modifier = Modifier.padding(start = 8.dp)) {
-                    Text("Sync now")
+                // "Synced" when there's nothing to send; otherwise the pill is the Sync now button.
+                Surface(
+                    onClick = onSyncNow,
+                    enabled = !isSyncing,
+                    shape = RoundedCornerShape(percent = 50),
+                    color = color.copy(alpha = 0.12f),
+                ) {
+                    Row(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.Cloud, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
+                        Text(
+                            if (allSynced) "Synced" else "Sync now",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = color,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(start = 6.dp),
+                        )
+                    }
                 }
             }
             if (failedUploads > 0) {
@@ -278,7 +410,7 @@ private fun SyncStatusCard(
                     "$failedUploads record(s) refused by the server - see Admin > Sync & Account",
                     style = MaterialTheme.typography.bodySmall,
                     color = AccentRed,
-                    modifier = Modifier.padding(top = 10.dp),
+                    modifier = Modifier.padding(top = 12.dp),
                 )
             }
             message?.let {
@@ -290,5 +422,32 @@ private fun SyncStatusCard(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun EmptyHistory() {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = 28.dp, bottom = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            modifier = Modifier.size(84.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Outlined.Description,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.size(36.dp),
+            )
+        }
+        Text("No scans yet.", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 16.dp))
+        Text(
+            "Choose Coming In or Going Out to start.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp),
+        )
     }
 }

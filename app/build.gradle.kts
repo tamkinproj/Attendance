@@ -28,6 +28,14 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // The app is sideloaded, not on a store yet. Without a signing
+            // config the release APK came out unsigned and couldn't be
+            // installed, so only the debug APK was used - and debug builds
+            // are debuggable, which makes Compose (typing, scrolling, taps)
+            // noticeably laggy on budget phones. Signed with the debug key
+            // for now so this fast build installs; switch to a real release
+            // key before publishing.
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

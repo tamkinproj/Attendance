@@ -1,5 +1,6 @@
 package com.muslimedu.attendance.rfid
 
+import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -64,6 +65,11 @@ class KeyboardEmulationRfidReader : RfidReader {
     @Synchronized
     fun onKeyEvent(event: KeyEvent): Boolean {
         if (event.action != KeyEvent.ACTION_DOWN) return false
+        // A reader is a physical USB keyboard. Keys from the on-screen
+        // keyboard are the user typing - Gboard's number pad sends every
+        // digit as a key event, and eating those made the PIN field
+        // impossible to type in.
+        if (isSoftKeyboardInput(event.deviceId, event.flags, event.device?.isVirtual)) return false
 
         if (event.eventTime - lastKeyAt > INTER_KEY_TIMEOUT_MS) buffer.setLength(0)
 
@@ -85,10 +91,20 @@ class KeyboardEmulationRfidReader : RfidReader {
         return true
     }
 
-    private companion object {
-        const val INTER_KEY_TIMEOUT_MS = 500L
+    companion object {
+        /**
+         * True for keys from the on-screen keyboard (or any other virtual
+         * input device) - never card reader input. [deviceIsVirtual] is
+         * `InputDevice.isVirtual`, null when the device is unknown.
+         */
+        internal fun isSoftKeyboardInput(deviceId: Int, flags: Int, deviceIsVirtual: Boolean?): Boolean =
+            deviceId == KeyCharacterMap.VIRTUAL_KEYBOARD ||
+                (flags and KeyEvent.FLAG_SOFT_KEYBOARD) != 0 ||
+                deviceIsVirtual == true
+
+        private const val INTER_KEY_TIMEOUT_MS = 500L
 
         /** Short bursts are stray keystrokes, not a card. */
-        const val MIN_UID_LENGTH = 4
+        private const val MIN_UID_LENGTH = 4
     }
 }

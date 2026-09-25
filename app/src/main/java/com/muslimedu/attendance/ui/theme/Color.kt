@@ -32,11 +32,15 @@ val AccentRedContainer = Color(0xFFFBE1DE)
 val AccentSlate = Color(0xFF3D6680)
 val AccentSlateContainer = Color(0xFFDCE8F0)
 
+/** "Going out" - a clear blue, told apart from the teal "coming in" at a glance (5.3:1 on white). */
+val AccentBlue = Color(0xFF2F63C8)
+val AccentBlueContainer = Color(0xFFE2EBFB)
+
 /** The face-capture frame's border - brighter than [BrandPrimary] so it stands out over a live camera feed. */
 val ScanFrameGreen = Color(0xFF3FD0B5)
 
 val SurfaceLight = Color(0xFFFFFFFF)
-val BackgroundLight = Color(0xFFEEF6F4)
+val BackgroundLight = Color(0xFFF5F8F8)
 val SurfaceVariantLight = Color(0xFFE2F0EC)
 val TextPrimary = Color(0xFF14302C)
 val TextSecondary = Color(0xFF5C7571)
