@@ -292,6 +292,80 @@ assuming it's live. It is cumulative (includes the earlier route fix).
   byte-identical stray copy of the trait (wrong folder for its namespace),
   plus many backup files (`api.php1`, `ApiController.phpe`, `*.phpo`, ...).
 
+### Gate SMS notifications for parents (Laravel - not in this repo)
+
+Delivered as `sms-gateway-patch.zip`, same "not deployed until uploaded"
+status as the gate patch above. The user asked for parents to be texted
+when their child scans Coming In/Going Out, and specifically asked whether
+their Facebook account could be connected automatically - it can't:
+Meta requires a parent to message the Page first (an opt-in the platform
+enforces, not something code can skip), and even after that a Page can only
+message them for 24h after their last message TO it - confirmed from the
+backend's own `MessengerIntegrationController`/`MessengerWebhookController`
+docblocks, which already document both limits. That existing Messenger
+integration (one platform-wide Facebook Page, per-user PSID link via
+`User.messenger_psid`, forwarded through `NotificationController::push()`)
+was already there - not built this session - so Messenger stays what it
+was: a free bonus channel for a parent who's connected and stays active,
+never the reliable path.
+
+- **SMS via Semaphore** (semaphore.co, ~PHP 0.35-0.56/text, no monthly fee,
+  reaches all 4 PH networks) is the reliable channel: no opt-in, no time
+  window, just needs the parent's phone number. `SmsGatewaySetting` (one
+  global row, same shape as `MessengerIntegration`) + `SendSmsNotification`
+  job (one HTTP POST with an API key - no OAuth, unlike Globe Labs' telco
+  API, which was considered for its free PHP 1,000 sign-up credit but not
+  used, since its OAuth token lifecycle is a heavier integration for the
+  same result).
+- **The hook**: `AttendanceApi::admin_gate_attendance_scan()` calls
+  `notifyParentOfGateScan()` right after a scan is confirmed and saved -
+  never for a rejected/face-not-confirmed scan, never for a retried/
+  duplicate upload (both return earlier). Resolves the parent via
+  `User.parent_id` (the same column `BehaviorController` already uses for
+  its own parent notifications), then both pushes the free in-app/Messenger
+  notification and dispatches the SMS.
+- **`users.phone` is a new real column** - today a phone only exists ad hoc
+  inside `user_information` JSON from one admission flow, so almost no
+  parent has one anywhere queryable. New migration adds the column and
+  backfills it from that JSON where present; everyone else needs one
+  entered by hand.
+- **Where an admin enters it**: opened the existing Gate Students student
+  detail sheet (`gate-students.php/.js`) and added a "Parent contact" card -
+  shows/edits the phone on file, or says plainly there's no linked parent
+  account when `parent_id` is empty. New endpoint `admin_set_parent_phone`
+  writes to the *parent's* phone column, never the student's.
+- New web page `sms-gateway-settings.php/.js` (superadmin, same layout as
+  `messenger-settings.php`): API key, optional sender name (Semaphore caps
+  it at 11 characters, needs their pre-approval), an on/off switch, and a
+  "send yourself a test message" button before turning it on for real.
+- **Two edits given as instructions in the zip's README, not shipped as
+  full-file patches**: one line in `User.php`'s `$fillable` (`'phone'`) and
+  one array item in `superadmin-dashboard.js`'s Operations section - both
+  files are large, general-purpose files this session doesn't have a
+  guaranteed-current copy of (unlike the gate-patch files, which come from
+  this session's own earlier delivered zip), so overwriting them wholesale
+  risked silently reverting unrelated changes.
+- Real ongoing cost, since there's no way to make actual carrier SMS free:
+  roughly `students x events/day x school days/month x PHP 0.35-0.56` - for
+  300 students at 2 events/day, ~PHP 4,200-6,700/month. Globe Labs' PHP
+  1,000 free sign-up credit covers testing, not ongoing volume.
+- **Known limits**, same "say it plainly" discipline as the rest of this
+  doc: a student needs both a linked parent account AND a phone on it -
+  neither is guaranteed to exist yet, this patch only adds the column and
+  the UI to fill it in. One Semaphore account for the whole platform, not
+  per school (same choice already made for Messenger) - a true multi-school
+  SaaS would want billing split per school instead. No SMS on a rejected/
+  failed face check. Not gated by the existing `NotificationPreference`
+  model - a parent can't opt out of just the SMS channel yet.
+- Verified the same way as the gate patch: `php -l` on every new/edited PHP
+  file; the two edited JS files (`gate-students.js`, the new
+  `sms-gateway-settings.js`) passed `node -c` and were driven end-to-end in
+  headless Chromium against a mocked API (save settings, send a test
+  message, edit and save a parent's phone from the student detail sheet,
+  and the "no parent account linked" message for a student with none).
+  **Not run** against the real Laravel app, a real Semaphore account, or a
+  real phone.
+
 **Not verified on a device**: the app compiles and its unit tests run in CI,
 but the RFID reader, camera and migration need real hardware - especially
 `MIGRATION_7_8` on a device that already has v7 data.
