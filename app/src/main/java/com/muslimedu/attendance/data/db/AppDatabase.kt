@@ -23,7 +23,7 @@ import com.muslimedu.attendance.data.db.entities.StudentEntity
         AuditLogEntity::class,
         GateScanEntity::class,
     ],
-    version = 12,
+    version = 13,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -154,6 +154,25 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL(
                     "CREATE UNIQUE INDEX IF NOT EXISTS `index_face_templates_school_id_student_id_pose` " +
                         "ON `face_templates` (`school_id`, `student_id`, `pose`)",
+                )
+            }
+        }
+
+        /**
+         * Faces shared through the school server: a registration version
+         * and upload state on every face row. Faces registered before this
+         * are queued for upload once, so the school's other gate phones get
+         * them too; their version is built from what already identifies the
+         * registration (all its angles were saved with the same enrolled_at).
+         */
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `face_templates` ADD COLUMN `version` TEXT")
+                db.execSQL("ALTER TABLE `face_templates` ADD COLUMN `sync_status` TEXT NOT NULL DEFAULT 'synced'")
+                db.execSQL("ALTER TABLE `face_templates` ADD COLUMN `sync_error` TEXT")
+                db.execSQL(
+                    "UPDATE `face_templates` SET `version` = 'v12-' || `school_id` || '-' || `student_id` || '-' || `enrolled_at`, " +
+                        "`sync_status` = 'pending' WHERE `model` = 'mobilefacenet' AND `is_active` = 1",
                 )
             }
         }

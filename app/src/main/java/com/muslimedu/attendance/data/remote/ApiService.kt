@@ -35,6 +35,10 @@ import com.muslimedu.attendance.data.remote.dto.ParentPhoneSetRequest
 import com.muslimedu.attendance.data.remote.dto.RefreshTokenData
 import com.muslimedu.attendance.data.remote.dto.RosterData
 import com.muslimedu.attendance.data.remote.dto.RosterRequest
+import com.muslimedu.attendance.data.remote.dto.StudentFaceSetData
+import com.muslimedu.attendance.data.remote.dto.StudentFaceSetRequest
+import com.muslimedu.attendance.data.remote.dto.StudentFacesData
+import com.muslimedu.attendance.data.remote.dto.StudentFacesRequest
 import com.muslimedu.attendance.data.remote.dto.StudentRfidSetData
 import com.muslimedu.attendance.data.remote.dto.StudentRfidSetRequest
 import com.muslimedu.attendance.data.remote.dto.TeacherClassesData
@@ -136,6 +140,14 @@ interface ApiService {
 
     @POST("admin_gate_sms_templates_update")
     suspend fun adminGateSmsTemplatesUpdate(@Body request: GateSmsTemplatesUpdateRequest): ApiEnvelope<GateSmsTemplatesData>
+
+    /** Shares a face registered on this phone with the school's other gate phones. */
+    @POST("admin_student_face_set")
+    suspend fun adminStudentFaceSet(@Body request: StudentFaceSetRequest): ApiEnvelope<StudentFaceSetData>
+
+    /** The school's shared faces changed since the last download. */
+    @POST("admin_student_faces")
+    suspend fun adminStudentFaces(@Body request: StudentFacesRequest): ApiEnvelope<StudentFacesData>
 
     /** The school's "not arrived" alert. See [GateAbsenceSettingsUpdateRequest]. */
     @POST("admin_gate_absence_settings")

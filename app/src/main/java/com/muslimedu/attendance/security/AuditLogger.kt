@@ -66,5 +66,7 @@ class AuditLogger @Inject constructor(
         const val ACTION_GATE_SCHEDULE_SET = "gate_schedule_set"
         const val ACTION_PARENT_PHONE_SET = "parent_phone_set"
         const val ACTION_PARENT_SMS_MESSAGES_SET = "parent_sms_messages_set"
+        const val ACTION_BACKUP_EXPORTED = "backup_exported"
+        const val ACTION_BACKUP_RESTORED = "backup_restored"
     }
 }

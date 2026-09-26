@@ -6,12 +6,14 @@ import com.muslimedu.attendance.data.db.AppDatabase
 import com.muslimedu.attendance.data.db.dao.FaceTemplateDao
 import com.muslimedu.attendance.data.db.entities.FaceTemplateEntity
 import com.muslimedu.attendance.data.local.SettingsRepository
+import com.muslimedu.attendance.face.FaceCodec
 import com.muslimedu.attendance.face.FaceRecognizer
 import com.muslimedu.attendance.face.FaceTemplate
+import com.muslimedu.attendance.face.PortableFace
+import com.muslimedu.attendance.face.PortableFaceAngle
 import com.muslimedu.attendance.security.AuditLogger
 import com.muslimedu.attendance.security.EncryptionHelper
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -53,12 +55,13 @@ internal fun closestOtherStudent(scores: Map<Int, Float>, ownStudentId: Int, thr
  * (see the Settings screen), defaulting to the spec's `face_verification`
  * settings block values.
  *
- * Every method here is local-only, by construction rather than convention:
- * this class has no [com.muslimedu.attendance.data.remote.ApiService]
- * dependency at all, only [faceTemplateDao] (Room) and [encryptionHelper]
- * (Android Keystore-wrapped Tink). A face is never uploaded, and no endpoint
- * in the spec even accepts one - enrolling on one device does not make a
- * student recognizable on another.
+ * Every method here is local: this class has no
+ * [com.muslimedu.attendance.data.remote.ApiService] dependency, only
+ * [faceTemplateDao] (Room) and [encryptionHelper] (Android Keystore-wrapped
+ * Tink). Sharing a face with the school's other gate phones goes through
+ * [com.muslimedu.attendance.sync.FaceSyncManager] (when Face Settings allows
+ * it) and the backup file through BackupRepository, both via [exportFace] /
+ * [replaceFace] - the only ways a face's numbers leave or enter this class.
  */
 @Singleton
 class FaceTemplateRepository @Inject constructor(
@@ -117,11 +120,13 @@ class FaceTemplateRepository @Inject constructor(
     suspend fun saveEnrollment(schoolId: Int, studentId: Int, templates: List<FaceTemplate>, enrolledBy: String?) {
         if (templates.isEmpty()) return
         val now = System.currentTimeMillis()
+        // A new registration: queued for the school's other gate phones.
+        val version = UUID.randomUUID().toString()
         val rows = templates.mapIndexed { pose, template ->
             FaceTemplateEntity(
                 schoolId = schoolId,
                 studentId = studentId,
-                encryptedEmbedding = encryptionHelper.encrypt(floatArrayToBytes(template.embedding)),
+                encryptedEmbedding = encryptionHelper.encrypt(FaceCodec.toBytes(template.embedding)),
                 encryptionVersion = template.encryptionVersion,
                 enrolledAt = now,
                 enrolledBy = enrolledBy,
@@ -129,6 +134,8 @@ class FaceTemplateRepository @Inject constructor(
                 createdAt = now,
                 updatedAt = now,
                 pose = pose,
+                version = version,
+                syncStatus = FaceTemplateEntity.SYNC_PENDING,
             )
         }
         database.withTransaction {
@@ -157,6 +164,63 @@ class FaceTemplateRepository @Inject constructor(
         return closestOtherStudent(bestPerStudent(scores), studentId, settingsRepository.minMatchScore.value)
     }
 
+    /**
+     * The student's registration in a form that can leave this phone, or
+     * null when there's none. The version is the registration's own (a face
+     * saved before versions existed gets one from its registration time).
+     */
+    suspend fun exportFace(schoolId: Int, studentId: Int): PortableFace? {
+        val rows = faceTemplateDao.findAllForStudent(schoolId, studentId).ifEmpty { return null }
+        return rows.toPortable()
+    }
+
+    /** Every registered face of the school, by student id - for the backup file. */
+    suspend fun exportAll(schoolId: Int): Map<Int, PortableFace> =
+        faceTemplateDao.activeForSchool(schoolId).groupBy { it.studentId }.mapValues { (_, rows) -> rows.sortedBy { it.pose }.toPortable() }
+
+    private fun List<FaceTemplateEntity>.toPortable(): PortableFace {
+        val first = first()
+        return PortableFace(
+            model = first.model,
+            version = first.version ?: "local-${first.schoolId}-${first.studentId}-${first.enrolledAt}",
+            angles = map { PortableFaceAngle(it.pose, bytesToFloatArray(encryptionHelper.decrypt(it.encryptedEmbedding)), it.livenessScore) },
+        )
+    }
+
+    /** The registration version on this phone and whether the server has it, or null with no face. */
+    suspend fun syncState(schoolId: Int, studentId: Int): Pair<String?, String>? =
+        faceTemplateDao.findAllForStudent(schoolId, studentId).firstOrNull()?.let { it.version to it.syncStatus }
+
+    /**
+     * Replaces the student's face with [face] from the school server or a
+     * backup file - every old row goes, in one transaction. [syncStatus]:
+     * synced for one that came from the server, pending for a restored one
+     * the server may not have.
+     */
+    suspend fun replaceFace(schoolId: Int, studentId: Int, face: PortableFace, syncStatus: String, source: String) {
+        val now = System.currentTimeMillis()
+        val rows = face.angles.sortedBy { it.pose }.mapIndexed { index, angle ->
+            FaceTemplateEntity(
+                schoolId = schoolId,
+                studentId = studentId,
+                encryptedEmbedding = encryptionHelper.encrypt(FaceCodec.toBytes(angle.embedding)),
+                enrolledAt = now,
+                enrolledBy = source,
+                livenessScore = angle.livenessScore,
+                createdAt = now,
+                updatedAt = now,
+                model = face.model,
+                pose = index,
+                version = face.version,
+                syncStatus = syncStatus,
+            )
+        }
+        database.withTransaction {
+            faceTemplateDao.deleteForStudent(schoolId, studentId)
+            faceTemplateDao.insertAll(rows)
+        }
+    }
+
     private fun FaceTemplateEntity.toTemplate() = FaceTemplate(
         embedding = bytesToFloatArray(encryptionHelper.decrypt(encryptedEmbedding)),
         livenessScore = livenessScore,
@@ -178,18 +242,5 @@ class FaceTemplateRepository @Inject constructor(
         }
     }
 
-    private fun floatArrayToBytes(floats: FloatArray): ByteArray {
-        val buffer = ByteBuffer.allocate(floats.size * Float.SIZE_BYTES).order(ByteOrder.LITTLE_ENDIAN)
-        floats.forEach { buffer.putFloat(it) }
-        return buffer.array()
-    }
-
-    private fun bytesToFloatArray(bytes: ByteArray): FloatArray {
-        val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-        val floats = FloatArray(bytes.size / Float.SIZE_BYTES)
-        for (i in floats.indices) {
-            floats[i] = buffer.getFloat(i * Float.SIZE_BYTES)
-        }
-        return floats
-    }
+    private fun bytesToFloatArray(bytes: ByteArray): FloatArray = FaceCodec.fromBytes(bytes)
 }

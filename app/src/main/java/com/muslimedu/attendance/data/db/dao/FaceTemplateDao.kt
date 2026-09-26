@@ -45,6 +45,27 @@ interface FaceTemplateDao {
     )
     suspend fun angleCounts(): List<FaceAngleCount>
 
+    /** Students whose registration the school server doesn't have yet. */
+    @Query(
+        "SELECT DISTINCT student_id FROM face_templates WHERE school_id = :schoolId AND sync_status = 'pending' " +
+            "AND is_active = 1 AND model = '$CURRENT_MODEL'",
+    )
+    suspend fun pendingStudentIds(schoolId: Int): List<Int>
+
+    /** Students with a registration not on the server (waiting or refused) - for the Sync screen. */
+    @Query(
+        "SELECT COUNT(DISTINCT student_id) FROM face_templates WHERE school_id = :schoolId AND sync_status != 'synced' " +
+            "AND is_active = 1 AND model = '$CURRENT_MODEL'",
+    )
+    suspend fun unsentCount(schoolId: Int): Int
+
+    /** Only rows of [version]: a registration replaced while it was uploading stays pending. */
+    @Query(
+        "UPDATE face_templates SET sync_status = :status, sync_error = :error " +
+            "WHERE school_id = :schoolId AND student_id = :studentId AND version = :version",
+    )
+    suspend fun updateSyncState(schoolId: Int, studentId: Int, version: String, status: String, error: String?)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(template: FaceTemplateEntity)
 

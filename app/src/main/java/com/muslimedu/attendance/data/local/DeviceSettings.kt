@@ -110,6 +110,13 @@ class DeviceSettings @Inject constructor(
         }
     }
 
+    /** The server time of the last complete shared-face download - the next one asks only for newer faces. */
+    var faceDownloadSince: String?
+        get() = prefs.getString(KEY_FACE_DOWNLOAD_SINCE, null)
+        set(value) {
+            prefs.edit().putString(KEY_FACE_DOWNLOAD_SINCE, value).apply()
+        }
+
     /** When an upload last finished with nothing left waiting - reported to the web as "last synced". */
     var lastSyncOkAt: Long?
         get() = prefs.getLong(KEY_LAST_SYNC_OK, 0L).takeIf { it > 0L }
@@ -165,6 +172,7 @@ class DeviceSettings @Inject constructor(
         private const val NO_LATE_CHECK = "-"
         private const val KEY_DEVICE_UID = "device_uid"
         private const val KEY_LAST_SYNC_OK = "last_sync_ok_at"
+        private const val KEY_FACE_DOWNLOAD_SINCE = "face_download_since"
         private const val KEY_HEALTH_AT = "health_at"
         private const val KEY_HEALTH_OK = "health_ok"
         private const val KEY_HEALTH_MESSAGE = "health_message"

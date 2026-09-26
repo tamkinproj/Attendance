@@ -390,11 +390,58 @@ this device), the same pieces the old gate screen used.
   checks `role_id === 2`, so teachers and superadmins would only get 403s).
   The only in-app sign-in after that is the "forgot PIN" re-authentication,
   which skips the sync step.
-- Real Room migrations (`MIGRATION_6_7` ... `MIGRATION_11_12`), not the
+- Real Room migrations (`MIGRATION_6_7` ... `MIGRATION_12_13`), not the
   destructive fallback - installed devices hold card assignments and face
   templates that exist nowhere else.
-- Face templates stay on the device that enrolled them (unchanged): each
-  gate device enrolls its own faces.
+- **Faces are shared between the school's gate phones** (the user said yes
+  after being told faces are sensitive personal data under RA 10173 and the
+  school should tell parents / get consent). Register once, recognised at
+  every gate; a replacement phone gets every face back on its first sync.
+  `FaceSyncManager`, step 4 of every gate sync (after attendance, never in
+  its way), only while Face Settings > "Share faces with the school's other
+  gate phones" is on (`SettingsRepository.shareFaces`, default on):
+  - **Upload**: every registration gets a UUID `version` and
+    `sync_status = pending` on all its angle rows (`face_templates.version /
+    sync_status / sync_error`, `MIGRATION_12_13`, DB v13 - the state lives
+    on the face rows, not the student row, because the student download
+    rebuilds student rows). Sent to `admin_student_face_set` (code, model,
+    version, device uid, each angle's numbers as base64 little-endian float32
+    - `FaceCodec`, byte-identical to PHP `pack('g*')`, pinned by
+    `FaceCodecTest`). 404/422 -> failed, 405/501 -> "not set up on the
+    school server yet". `updateSyncState` only marks the version it sent, so
+    a re-registration mid-upload stays pending. The wizard queues a sync
+    right after saving a face. Faces registered before v13 get a version
+    from their `enrolled_at` and are queued once by the migration.
+  - **Download**: `admin_student_faces` with `since` =
+    `DeviceSettings.faceDownloadSince` (the server's time of the last
+    download) at most every 5 min, or forced right after a student list
+    download (first sign-in sync and Sync & Account). A face replaces this
+    phone's copy (`FaceTemplateRepository.replaceFace`, one transaction)
+    unless it's the same version or this phone's own registration isn't on
+    the server yet (pending/failed - the phone's wins, like cards). A face
+    for a student not on this phone yet keeps `since` from moving on, so it
+    comes again after the next student download. Other models and damaged
+    numbers are ignored.
+  - Downloaded faces take part in the one-face-per-student check when the
+    next student is registered here; two phones registering the same face
+    to different students at the same time isn't detected (no comparison on
+    the server).
+- **Backup file** (the user asked for it with the face-sharing answer: "export
+  a file of all their faces and cards ... a backup for the other phone"):
+  Sync & Account > Backup > **Export** / **Restore**. One file
+  (`gate-backup-yyyy-MM-dd-HHmm.gatebak`, shared through the share sheet -
+  Drive, email, Files) with every student's card, parent number and face
+  (`BackupRepository`, `GateBackup`). Always password-protected
+  (`GateBackupCodec`: "GATEBAK1" header, PBKDF2-HMAC-SHA256 120k iterations,
+  AES-256-GCM with the header as AAD; min 6 characters, entered twice, can't
+  be recovered). Restore (file picker + password) only into the same school
+  (`school_id` in the file), only for students already on the phone
+  (download the student list first - they're counted), skips a card
+  another student holds here, and queues everything restored for upload
+  like a change made on the phone (cards, numbers, faces pending). Works
+  with no server. `GateBackupTest`: round trip, nothing readable without
+  the password, wrong password, tampering, not-a-backup, newer version,
+  fresh salt/IV per export. Audit log: `backup_exported` / `backup_restored`.
 
 ### Backend + web changes (Laravel - not in this repo)
 The user supplied their Laravel source (routes, app, database) and web
@@ -541,6 +588,22 @@ per day, also what stops two phones' reports double-texting),
   a face-failed scan still waiting on a phone isn't in `pending_uploads`
   (only attendance is), so that student could be texted; nothing is
   written to class attendance as absent - teachers still decide that.
+
+### Shared faces (Laravel + web - not in this repo)
+
+Delivered as `face-sharing-update.zip` (only new/changed files). Migration
+`2026_09_26_000007` / `database/sql/student-faces.sql` (MariaDB, run twice):
+`student_faces`, one row per student (unique `student_id`), `templates` =
+`Crypt::encryptString` of the angles JSON (the app key; hidden from JSON),
+`version`, `angles`, `model`, `device_uid`. `StudentFace::embeddingProblem`
+refuses non-base64 or odd-sized numbers (max 4096 bytes an angle, 5 angles,
+model `mobilefacenet` only). `admin_student_face_set` (same version again =
+no change) and `admin_student_faces` (`since`, one second of overlap;
+active students of the admin's own school only; returns `server_time`),
+both 501 until the table exists. Gate Students' detail sheet shows "Face
+registered: N of 3 angles" (`face_angles` / `face_sharing` in the
+overview). Checked with 14 checks against SQLite + Laravel's real
+Encrypter (`laraveltest/faces_test.php`); not run in the full app.
 
 ### Gate SMS notifications for parents (Laravel - not in this repo)
 

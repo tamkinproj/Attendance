@@ -102,7 +102,12 @@ class InitialSyncViewModel @Inject constructor(
     private suspend fun download(): SyncStepState = studentDownloadRepository.download().fold(
         onSuccess = { s ->
             val total = s.added + s.updated
-            SyncStepState(SyncStepStatus.Done, "$total students (${s.added} new, ${s.updated} updated)")
+            // Faces the school's other gate phones registered, now that their students are here.
+            val faces = (gateSyncManager.flush(forceFaceDownload = true) as? GateSyncOutcome.Finished)?.faces?.downloaded ?: 0
+            SyncStepState(
+                SyncStepStatus.Done,
+                "$total students (${s.added} new, ${s.updated} updated)" + if (faces > 0) ", $faces face(s) from other gates" else "",
+            )
         },
         onFailure = {
             val status = if (it is StudentDownloadUnavailableException) SyncStepStatus.Skipped else SyncStepStatus.Failed

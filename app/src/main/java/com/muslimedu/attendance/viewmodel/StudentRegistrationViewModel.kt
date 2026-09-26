@@ -300,6 +300,8 @@ class StudentRegistrationViewModel @Inject constructor(
             templates = state.captured,
             enrolledBy = sessionManager.currentUser.value?.email ?: "device",
         )
+        // Shared with the school's other gate phones as soon as there's a connection.
+        gateSyncScheduler.syncWhenOnline()
         refreshCandidates()
         _uiState.value = phoneStep(state.student, state.card)
     }

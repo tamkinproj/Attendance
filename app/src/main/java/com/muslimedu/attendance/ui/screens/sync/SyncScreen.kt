@@ -1,5 +1,9 @@
 package com.muslimedu.attendance.ui.screens.sync
 
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -10,9 +14,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -23,6 +30,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,7 +42,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.muslimedu.attendance.data.db.entities.GateScanEntity
@@ -51,6 +62,7 @@ import com.muslimedu.attendance.ui.theme.AccentRedContainer
 import com.muslimedu.attendance.ui.theme.BrandPrimary
 import com.muslimedu.attendance.ui.theme.BrandPrimaryContainer
 import com.muslimedu.attendance.util.DeviceHealth
+import com.muslimedu.attendance.util.GateBackupCodec
 import com.muslimedu.attendance.viewmodel.SyncViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -75,6 +87,48 @@ fun SyncScreen(
     val deviceHealth by viewModel.deviceHealth.collectAsState()
     val deviceNow by viewModel.deviceNow.collectAsState()
     val isReporting by viewModel.isReporting.collectAsState()
+    val backupBusy by viewModel.backupBusy.collectAsState()
+    val backupMessage by viewModel.backupMessage.collectAsState()
+    val backupToShare by viewModel.backupToShare.collectAsState()
+    val context = LocalContext.current
+    var exportDialog by remember { mutableStateOf(false) }
+    var restoreUri by remember { mutableStateOf<Uri?>(null) }
+    val pickBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> restoreUri = uri }
+
+    // A backup file was just made: hand it to the share sheet (Drive, email, Files...).
+    LaunchedEffect(backupToShare) {
+        val export = backupToShare ?: return@LaunchedEffect
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/octet-stream"
+            putExtra(Intent.EXTRA_STREAM, export.uri)
+            putExtra(Intent.EXTRA_SUBJECT, export.fileName)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        runCatching { context.startActivity(Intent.createChooser(intent, "Save the backup file")) }
+        viewModel.backupShared()
+    }
+    if (exportDialog) {
+        BackupPasswordDialog(
+            title = "Export backup",
+            confirmTwice = true,
+            onConfirm = { password ->
+                exportDialog = false
+                viewModel.exportBackup(password)
+            },
+            onDismiss = { exportDialog = false },
+        )
+    }
+    restoreUri?.let { uri ->
+        BackupPasswordDialog(
+            title = "Restore backup",
+            confirmTwice = false,
+            onConfirm = { password ->
+                restoreUri = null
+                viewModel.restoreBackup(uri, password)
+            },
+            onDismiss = { restoreUri = null },
+        )
+    }
     var confirmSignOut by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { viewModel.refresh() }
@@ -138,6 +192,16 @@ fun SyncScreen(
         item {
             SectionHeader("This gate device", modifier = Modifier.padding(top = 24.dp))
             DeviceHealthCard(deviceHealth, deviceNow, isReporting, onReport = viewModel::reportDeviceHealth)
+        }
+
+        item {
+            SectionHeader("Backup", modifier = Modifier.padding(top = 24.dp))
+            BackupCard(
+                busy = backupBusy,
+                message = backupMessage,
+                onExport = { exportDialog = true },
+                onRestore = { pickBackup.launch(arrayOf("*/*")) },
+            )
         }
 
         item {
@@ -275,6 +339,93 @@ private fun DeviceHealthCard(
             }
         }
     }
+}
+
+/**
+ * Every student's card, parent number and face in one password-protected
+ * file - to set up a replacement or second gate phone without registering
+ * everyone again, even with no internet.
+ */
+@Composable
+private fun BackupCard(busy: Boolean, message: String?, onExport: () -> Unit, onRestore: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                "Save every student's card, face and parent number to one file, protected by a password. If this phone " +
+                    "is lost or broken, restore the file on the new phone (same school) - no registering everyone again.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(modifier = Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onExport, enabled = !busy) {
+                    if (busy) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Filled.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Text("Export", modifier = Modifier.padding(start = 8.dp))
+                    }
+                }
+                OutlinedButton(onClick = onRestore, enabled = !busy) {
+                    Icon(Icons.Filled.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Text("Restore", modifier = Modifier.padding(start = 8.dp))
+                }
+            }
+            message?.let { Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 8.dp)) }
+        }
+    }
+}
+
+/** The backup's password: twice when making one (it can't be recovered), once to restore. */
+@Composable
+private fun BackupPasswordDialog(title: String, confirmTwice: Boolean, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+    var password by remember { mutableStateOf("") }
+    var again by remember { mutableStateOf("") }
+    val problem = when {
+        password.length < GateBackupCodec.MIN_PASSWORD_LENGTH -> "At least ${GateBackupCodec.MIN_PASSWORD_LENGTH} characters"
+        confirmTwice && again != password -> "The two passwords don't match"
+        else -> null
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                Text(
+                    if (confirmTwice) {
+                        "Choose a password for the file. You need it to restore - it can't be recovered, so write it down somewhere safe."
+                    } else {
+                        "The password chosen when the backup was made."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Password") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                )
+                if (confirmTwice) {
+                    OutlinedTextField(
+                        value = again,
+                        onValueChange = { again = it },
+                        label = { Text("Password again") },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    )
+                }
+                if (password.isNotEmpty() && problem != null) {
+                    Text(problem, color = AccentRed, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(password) }, enabled = problem == null) { Text(if (confirmTwice) "Export" else "Restore") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable

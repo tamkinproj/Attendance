@@ -39,11 +39,22 @@ data class FaceTemplateEntity(
     // v12, same reasoning: faces enrolled before angles existed are pose 0.
     /** Capture order of this angle - 0 is the straight face; a skipped side leaves no gap. */
     @ColumnInfo(name = "pose") val pose: Int = 0,
+    // v13: sharing through the school server. Every angle of one
+    // registration carries the same [version] and upload state, so the
+    // state travels with the face (a student download never touches it).
+    /** Identifies one registration (all its angles); the other gate phones compare it. */
+    @ColumnInfo(name = "version") val version: String? = null,
+    /** [SYNC_PENDING] until the school server has this registration, [SYNC_FAILED] when it refused it. */
+    @ColumnInfo(name = "sync_status") val syncStatus: String = SYNC_SYNCED,
+    @ColumnInfo(name = "sync_error") val syncError: String? = null,
 ) {
     companion object {
         /** The old landmark-ratio placeholder: kept on the device, never compared with. */
         const val MODEL_LANDMARK = "landmark"
         const val MODEL_MOBILEFACENET = "mobilefacenet"
+        const val SYNC_PENDING = "pending"
+        const val SYNC_SYNCED = "synced"
+        const val SYNC_FAILED = "failed"
     }
 
     override fun equals(other: Any?): Boolean {
@@ -54,7 +65,8 @@ data class FaceTemplateEntity(
             encryptionVersion == other.encryptionVersion && enrolledAt == other.enrolledAt &&
             enrolledBy == other.enrolledBy && livenessScore == other.livenessScore &&
             isActive == other.isActive && createdAt == other.createdAt && updatedAt == other.updatedAt &&
-            model == other.model && pose == other.pose
+            model == other.model && pose == other.pose && version == other.version &&
+            syncStatus == other.syncStatus && syncError == other.syncError
     }
 
     override fun hashCode(): Int {
