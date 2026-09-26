@@ -1546,7 +1546,8 @@ Two separate causes, both fixed:
    needs the new APK's versionCode >= the installed one's - it is the CI run
    number, which only grows. **Lose the keystore and the next update wipes
    the phones again** - the user was told to keep a private backup; GitHub
-   secrets can't be read back. The switch itself needs one last uninstall
+   secrets can't be read back. The user added both secrets on 2026-09-26.
+   The switch itself needs one last uninstall
    per phone (the old APKs carry old random keys): upload everything first,
    then reinstall; cards and parent numbers come back with the student
    download, faces must be registered again that one time.
