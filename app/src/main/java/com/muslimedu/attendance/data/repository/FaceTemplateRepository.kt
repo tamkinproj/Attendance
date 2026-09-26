@@ -1,6 +1,8 @@
 package com.muslimedu.attendance.data.repository
 
 import android.graphics.Bitmap
+import androidx.room.withTransaction
+import com.muslimedu.attendance.data.db.AppDatabase
 import com.muslimedu.attendance.data.db.dao.FaceTemplateDao
 import com.muslimedu.attendance.data.db.entities.FaceTemplateEntity
 import com.muslimedu.attendance.data.local.SettingsRepository
@@ -20,14 +22,19 @@ sealed class FaceVerificationResult {
     data object NoTemplateEnrolled : FaceVerificationResult()
 }
 
-sealed class FaceEnrollResult {
-    data class Success(val livenessScore: Float) : FaceEnrollResult()
-    data object NoFaceDetected : FaceEnrollResult()
-    data class LivenessTooLow(val score: Float) : FaceEnrollResult()
+/** One captured angle, checked but not saved yet - [FaceTemplateRepository.saveEnrollment] saves them together. */
+sealed class FaceCaptureResult {
+    data class Captured(val template: FaceTemplate) : FaceCaptureResult()
+    data object NoFaceDetected : FaceCaptureResult()
+    data class LivenessTooLow(val score: Float) : FaceCaptureResult()
 
-    /** The face matches the one enrolled for another student ([studentId]) - nothing was saved. */
-    data class AlreadyEnrolled(val studentId: Int, val score: Float) : FaceEnrollResult()
+    /** The face matches one enrolled for another student ([studentId]) - it can't be used. */
+    data class AlreadyEnrolled(val studentId: Int, val score: Float) : FaceCaptureResult()
 }
+
+/** Scores for every stored angle, as (student id, score) - kept as each student's best. */
+internal fun bestPerStudent(scores: List<Pair<Int, Float>>): Map<Int, Float> =
+    scores.groupBy({ it.first }, { it.second }).mapValues { (_, values) -> values.max() }
 
 /**
  * The other student whose face best matches, if that match reaches
@@ -55,6 +62,7 @@ internal fun closestOtherStudent(scores: Map<Int, Float>, ownStudentId: Int, thr
  */
 @Singleton
 class FaceTemplateRepository @Inject constructor(
+    private val database: AppDatabase,
     private val faceRecognizer: FaceRecognizer,
     private val faceTemplateDao: FaceTemplateDao,
     private val encryptionHelper: EncryptionHelper,
@@ -65,13 +73,25 @@ class FaceTemplateRepository @Inject constructor(
         faceTemplateDao.findForStudent(schoolId, studentId) != null
 
     /** (schoolId, studentId) pairs with an active template - for a list badge, not the templates themselves. */
-    suspend fun enrolledKeys(): Set<Pair<Int, Int>> =
-        faceTemplateDao.activeKeys().mapTo(mutableSetOf()) { it.schoolId to it.studentId }
+    suspend fun enrolledKeys(): Set<Pair<Int, Int>> = enrolledAngles().keys
 
-    suspend fun enroll(schoolId: Int, studentId: Int, bitmap: Bitmap, enrolledBy: String?): FaceEnrollResult {
-        val template = faceRecognizer.enrollFace(bitmap) ?: return FaceEnrollResult.NoFaceDetected
-        if (template.livenessScore < settingsRepository.livenessThreshold.value) {
-            return FaceEnrollResult.LivenessTooLow(template.livenessScore)
+    /** How many angles each enrolled student has - one for a face enrolled before angles existed. */
+    suspend fun enrolledAngles(): Map<Pair<Int, Int>, Int> =
+        faceTemplateDao.angleCounts().associate { (it.schoolId to it.studentId) to it.angles }
+
+    suspend fun angleCount(schoolId: Int, studentId: Int): Int =
+        faceTemplateDao.findAllForStudent(schoolId, studentId).size
+
+    /**
+     * Turns one captured frame into a template for [studentId], checked but
+     * not saved: a face must be found, [checkLiveness] (the straight angle)
+     * must clear the liveness threshold, and it must not be another
+     * student's face (one face per student).
+     */
+    suspend fun captureAngle(schoolId: Int, studentId: Int, bitmap: Bitmap, checkLiveness: Boolean): FaceCaptureResult {
+        val template = faceRecognizer.enrollFace(bitmap) ?: return FaceCaptureResult.NoFaceDetected
+        if (checkLiveness && template.livenessScore < settingsRepository.livenessThreshold.value) {
+            return FaceCaptureResult.LivenessTooLow(template.livenessScore)
         }
         duplicateOf(schoolId, studentId, template)?.let { (otherStudentId, score) ->
             auditLogger.log(
@@ -81,10 +101,23 @@ class FaceTemplateRepository @Inject constructor(
                 details = "refused: matches student $otherStudentId (score=$score)",
                 success = false,
             )
-            return FaceEnrollResult.AlreadyEnrolled(otherStudentId, score)
+            return FaceCaptureResult.AlreadyEnrolled(otherStudentId, score)
         }
+        return FaceCaptureResult.Captured(template)
+    }
+
+    /** 0-1 similarity of two captured angles - whether a later angle is still the same person. */
+    fun sameFaceScore(a: FaceTemplate, b: FaceTemplate): Float = faceRecognizer.similarity(a, b)
+
+    /**
+     * Saves [templates] (in angle order) as [studentId]'s face, replacing
+     * whatever was enrolled before - every angle and any old-model row - in
+     * one transaction, so the gate never sees half an enrollment.
+     */
+    suspend fun saveEnrollment(schoolId: Int, studentId: Int, templates: List<FaceTemplate>, enrolledBy: String?) {
+        if (templates.isEmpty()) return
         val now = System.currentTimeMillis()
-        faceTemplateDao.upsert(
+        val rows = templates.mapIndexed { pose, template ->
             FaceTemplateEntity(
                 schoolId = schoolId,
                 studentId = studentId,
@@ -95,28 +128,33 @@ class FaceTemplateRepository @Inject constructor(
                 livenessScore = template.livenessScore,
                 createdAt = now,
                 updatedAt = now,
-            ),
-        )
+                pose = pose,
+            )
+        }
+        database.withTransaction {
+            faceTemplateDao.deleteForStudent(schoolId, studentId)
+            faceTemplateDao.insertAll(rows)
+        }
         auditLogger.log(
             action = AuditLogger.ACTION_FACE_ENROLLED,
             entityType = "student",
             entityId = studentId,
-            details = "livenessScore=${template.livenessScore}",
+            details = "angles=${templates.size}, livenessScore=${templates.first().livenessScore}",
         )
-        return FaceEnrollResult.Success(template.livenessScore)
     }
 
     /**
-     * One face per student: compares [template] with every other student's
-     * enrolled face in the school. Skipped while the recognizer can't tell
-     * people apart (see [FaceRecognizer.canTellPeopleApart]).
+     * One face per student: compares [template] with every angle of every
+     * other student's face in the school, each student counted at their
+     * best angle. Skipped while the recognizer can't tell people apart (see
+     * [FaceRecognizer.canTellPeopleApart]).
      */
     private suspend fun duplicateOf(schoolId: Int, studentId: Int, template: FaceTemplate): Pair<Int, Float>? {
         if (!faceRecognizer.canTellPeopleApart) return null
         val scores = faceTemplateDao.activeForSchool(schoolId)
             .filter { it.studentId != studentId }
-            .associate { stored -> stored.studentId to faceRecognizer.similarity(template, stored.toTemplate()) }
-        return closestOtherStudent(scores, studentId, settingsRepository.minMatchScore.value)
+            .map { stored -> stored.studentId to faceRecognizer.similarity(template, stored.toTemplate()) }
+        return closestOtherStudent(bestPerStudent(scores), studentId, settingsRepository.minMatchScore.value)
     }
 
     private fun FaceTemplateEntity.toTemplate() = FaceTemplate(
@@ -125,11 +163,12 @@ class FaceTemplateRepository @Inject constructor(
         encryptionVersion = encryptionVersion,
     )
 
+    /** Matches the live face against every enrolled angle of the student; the best score decides. */
     suspend fun verify(schoolId: Int, studentId: Int, liveBitmap: Bitmap): FaceVerificationResult {
-        val stored = faceTemplateDao.findForStudent(schoolId, studentId)
-            ?: return FaceVerificationResult.NoTemplateEnrolled
+        val stored = faceTemplateDao.findAllForStudent(schoolId, studentId)
+        if (stored.isEmpty()) return FaceVerificationResult.NoTemplateEnrolled
 
-        val score = faceRecognizer.verifyFace(liveBitmap, stored.toTemplate())
+        val score = faceRecognizer.verifyFace(liveBitmap, stored.map { it.toTemplate() })
             ?: return FaceVerificationResult.NoFaceDetected
 
         return if (score >= settingsRepository.minMatchScore.value) {

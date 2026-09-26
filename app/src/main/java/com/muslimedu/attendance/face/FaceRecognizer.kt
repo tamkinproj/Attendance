@@ -13,8 +13,12 @@ interface FaceRecognizer {
     /** Detects the face in [bitmap] and turns it into a template, or null if no usable face was found. */
     suspend fun enrollFace(bitmap: Bitmap): FaceTemplate?
 
-    /** Detects the face in [liveFrame] and compares it with [storedTemplate]. A 0-1 match score, or null if no face. */
-    suspend fun verifyFace(liveFrame: Bitmap, storedTemplate: FaceTemplate): Float?
+    /**
+     * Detects the face in [liveFrame] and compares it with each of
+     * [storedTemplates] (one per enrolled angle). The best 0-1 match score,
+     * or null if no face.
+     */
+    suspend fun verifyFace(liveFrame: Bitmap, storedTemplates: List<FaceTemplate>): Float?
 
     /** 0-1 similarity between two stored templates, on the same scale as [verifyFace]. */
     fun similarity(a: FaceTemplate, b: FaceTemplate): Float
@@ -32,4 +36,6 @@ data class FaceTemplate(
     val embedding: FloatArray,
     val livenessScore: Float,
     val encryptionVersion: Int = 1,
+    /** Head yaw in degrees when captured (ML Kit's Euler Y) - which angle it is. Not stored. */
+    val yaw: Float? = null,
 )

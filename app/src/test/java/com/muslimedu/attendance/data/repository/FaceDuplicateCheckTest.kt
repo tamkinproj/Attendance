@@ -4,7 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/** One face per student: the decision [FaceTemplateRepository.enroll] makes before saving a face. */
+/** One face per student: the decision [FaceTemplateRepository.captureAngle] makes for each captured angle. */
 class FaceDuplicateCheckTest {
 
     private val threshold = 0.85f
@@ -34,5 +34,17 @@ class FaceDuplicateCheckTest {
     @Test
     fun `the first face in a school has nothing to duplicate`() {
         assertNull(closestOtherStudent(emptyMap(), ownStudentId = 1, threshold = threshold))
+    }
+
+    @Test
+    fun `each student with several angles counts at their best angle`() {
+        val scores = listOf(7 to 0.40f, 7 to 0.88f, 7 to 0.52f, 8 to 0.30f, 9 to 0.84f)
+        assertEquals(mapOf(7 to 0.88f, 8 to 0.30f, 9 to 0.84f), bestPerStudent(scores))
+        assertEquals(7 to 0.88f, closestOtherStudent(bestPerStudent(scores), ownStudentId = 1, threshold = threshold))
+    }
+
+    @Test
+    fun `no stored angles means no scores`() {
+        assertEquals(emptyMap<Int, Float>(), bestPerStudent(emptyList()))
     }
 }

@@ -10,10 +10,14 @@ import androidx.room.PrimaryKey
  * [com.muslimedu.attendance.security.EncryptionHelper]) of the raw bytes of a
  * [com.muslimedu.attendance.face.FaceTemplate]'s FloatArray embedding - never
  * a photo, matching the spec's "no photo storage" requirement.
+ *
+ * A student has one row per enrolled angle ([pose], in capture order:
+ * straight first, then the sides that were taken); the gate matches the
+ * best of them.
  */
 @Entity(
     tableName = "face_templates",
-    indices = [Index(value = ["school_id", "student_id"], unique = true)],
+    indices = [Index(value = ["school_id", "student_id", "pose"], unique = true)],
 )
 data class FaceTemplateEntity(
     @PrimaryKey(autoGenerate = true)
@@ -32,6 +36,9 @@ data class FaceTemplateEntity(
     // migration's DEFAULT marks rows from before the model as MODEL_LANDMARK.
     /** Which recognizer made [encryptedEmbedding]; only [MODEL_MOBILEFACENET] templates are used. */
     @ColumnInfo(name = "model") val model: String = MODEL_MOBILEFACENET,
+    // v12, same reasoning: faces enrolled before angles existed are pose 0.
+    /** Capture order of this angle - 0 is the straight face; a skipped side leaves no gap. */
+    @ColumnInfo(name = "pose") val pose: Int = 0,
 ) {
     companion object {
         /** The old landmark-ratio placeholder: kept on the device, never compared with. */
@@ -47,13 +54,14 @@ data class FaceTemplateEntity(
             encryptionVersion == other.encryptionVersion && enrolledAt == other.enrolledAt &&
             enrolledBy == other.enrolledBy && livenessScore == other.livenessScore &&
             isActive == other.isActive && createdAt == other.createdAt && updatedAt == other.updatedAt &&
-            model == other.model
+            model == other.model && pose == other.pose
     }
 
     override fun hashCode(): Int {
         var result = id.hashCode()
         result = 31 * result + schoolId
         result = 31 * result + studentId
+        result = 31 * result + pose
         result = 31 * result + encryptedEmbedding.contentHashCode()
         return result
     }

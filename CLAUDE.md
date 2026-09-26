@@ -210,10 +210,29 @@ this device), the same pieces the old gate screen used.
     The card is saved the moment it's read, then the wizard moves straight
     on to the face while the upload to the server registry finishes (its
     result shows on the card summary).
-  - Face: the gate's own live auto-capture (`LiveFaceCaptureView`) +
-    `FaceTemplateRepository.enroll`. A student who already has a face can
-    keep it or re-enroll; "Skip face for now" goes on without one (the
-    Done step warns that the gate refuses them until a face is enrolled).
+  - Face: the gate's own live auto-capture (`LiveFaceCaptureView`),
+    **three angles** (the user asked for 2-3 angles, matched best-of, to
+    cut false rejections while the MobileFaceNet threshold is untested on
+    phones): **Straight**, then **One side**, then **Other side**
+    (`FaceAngle`, `FaceAngles`). A banner on the camera says which angle,
+    with a dot per angle. The camera only fires at the asked angle - the
+    fast detector's head yaw (`headEulerAngleY`) is passed through
+    `LiveFaceCaptureView(acceptYaw = ...)`: straight |yaw| <= 12, a side
+    12-40 degrees, the other side the opposite sign of the first
+    (deliberately not "left"/"right" - the front preview is mirrored).
+    Each angle goes through `FaceTemplateRepository.captureAngle` (face
+    found; liveness only on the straight one; not another student's face),
+    and each side must still score >= `SAME_PERSON_MIN_SCORE` (0.62)
+    against the straight capture, or it retries ("doesn't look like the
+    same person"). A side not managed in `SIDE_ANGLE_TIMEOUT_MILLIS` (20s)
+    is skipped; the X on the camera finishes with the angles taken so far
+    (none -> skip face). All angles are saved together at the end
+    (`saveEnrollment`, one transaction replacing every old row of that
+    student). A student who already has a face can keep it or re-enroll
+    (the page shows "N of 3 angles" and suggests re-enrolling when < 3);
+    "Skip face for now" goes on without one (the Done step warns that the
+    gate refuses them until a face is enrolled). Done shows "Face enrolled
+    · N of 3 angles".
   - Parent no.: the parent's mobile number the gate texts go to. Optional
     ("Skip for now"; Done says the parent gets no texts). Checked as it's
     typed - a Philippine mobile, stored as `09XXXXXXXXX`
@@ -227,7 +246,9 @@ this device), the same pieces the old gate screen used.
     so a student with no parent account gets a warning and the server
     refuses the upload (shown in Students) until one is linked on the web -
     the next student download that reports a parent account re-queues it.
-  - Students list: card number, parent number + sync state; three buttons
+  - Students list: card number, parent number + sync state, and a gold
+    "Face: N of 3 angles - re-register for better matching" line for a
+    face with fewer than all angles (e.g. enrolled before this); three buttons
     per student - Card (Replace / Deactivate; Replace opens the wizard at
     the card step), Face (wizard at the face step, card step if there's no
     card yet), Parent no. (wizard at the number step). Filter "No parent
@@ -260,10 +281,12 @@ this device), the same pieces the old gate screen used.
   pumasok sa paaralan ng {time} ({date}) - huli ng {minutes_late}
   minuto.", extra placeholder {minutes_late}); hidden when the server
   doesn't have late messages yet.
-- **One face per student** - `FaceTemplateRepository.enroll` compares the
-  new face with every other student's enrolled face in the school and
-  refuses a match ("This face is already enrolled for <name> (<ID>)",
-  `FaceEnrollResult.AlreadyEnrolled`, logged in the Audit Log). A match
+- **One face per student** - `FaceTemplateRepository.captureAngle` compares
+  each captured angle with every angle of every other student's face in the
+  school (each student at their best angle, `bestPerStudent`) and refuses a
+  match ("This face is already enrolled for <name> (<ID>)",
+  `FaceCaptureResult.AlreadyEnrolled`, logged in the Audit Log; nothing of
+  that enrollment is saved). A match
   means a score at the gate's own match threshold (Face Settings, default
   0.75): exactly when the gate would accept the face as that other student.
   Runs only when `FaceRecognizer.canTellPeopleApart` is true - it is for
@@ -296,6 +319,17 @@ this device), the same pieces the old gate screen used.
     which replaces the old row. Old rows are kept, not deleted.
   - Liveness is unchanged: still `LivenessDetector`'s eye-open heuristic,
     so a good photo/video of the student can still pass the camera step.
+  - **Several angles per student** (`MIGRATION_11_12`): `face_templates.pose`
+    (capture order, 0 = straight; a skipped side leaves no gap) and the
+    unique index moves from (school, student) to (school, student, pose).
+    Faces enrolled before this are pose 0 and keep working as one angle.
+    `FaceTemplateRepository.verify` embeds the live frame once and takes
+    the **best** score over all the student's angles
+    (`FaceRecognizer.verifyFace(frame, templates)`), against the same match
+    threshold. Best-of lowers false rejections for a turned head; it also
+    gives an impostor up to three tries at the threshold instead of one -
+    watch for that when tuning Face Settings on real phones. Face counts
+    are students, not rows (`COUNT(DISTINCT student_id)`).
 - Admin screens (Register Card, Face & Number, Students, Parent SMS, Gate
   Schedule, Face Settings, Audit Log, Sync & Account, Change PIN) sit behind a **device PIN**
   (`AdminPinManager`: salted PBKDF2 hash in Keystore-backed encrypted prefs,
@@ -312,7 +346,7 @@ this device), the same pieces the old gate screen used.
   checks `role_id === 2`, so teachers and superadmins would only get 403s).
   The only in-app sign-in after that is the "forgot PIN" re-authentication,
   which skips the sync step.
-- Real Room migrations (`MIGRATION_6_7` ... `MIGRATION_9_10`), not the
+- Real Room migrations (`MIGRATION_6_7` ... `MIGRATION_11_12`), not the
   destructive fallback - installed devices hold card assignments and face
   templates that exist nowhere else.
 - Face templates stay on the device that enrolled them (unchanged): each

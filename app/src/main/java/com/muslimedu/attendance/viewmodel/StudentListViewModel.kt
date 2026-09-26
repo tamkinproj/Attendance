@@ -23,8 +23,10 @@ data class AddStudentState(
     val error: String? = null,
 )
 
-/** One row in the list, with whether a face template is on file - never the template itself. */
-data class StudentRow(val student: StudentEntity, val hasFace: Boolean)
+/** One row in the list, with how many face angles are on file (0 = no face) - never the templates themselves. */
+data class StudentRow(val student: StudentEntity, val faceAngles: Int) {
+    val hasFace: Boolean get() = faceAngles > 0
+}
 
 @HiltViewModel
 class StudentListViewModel @Inject constructor(
@@ -56,9 +58,9 @@ class StudentListViewModel @Inject constructor(
     fun refresh() {
         viewModelScope.launch {
             val students = studentRepository.getAll()
-            val enrolledKeys = faceTemplateRepository.enrolledKeys()
+            val angles = faceTemplateRepository.enrolledAngles()
             _rows.value = students.map { student ->
-                StudentRow(student, hasFace = (student.schoolId to student.studentId) in enrolledKeys)
+                StudentRow(student, faceAngles = angles[student.schoolId to student.studentId] ?: 0)
             }
         }
     }

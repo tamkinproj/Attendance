@@ -7,10 +7,13 @@ import com.muslimedu.attendance.data.db.entities.StudentEntity
 import com.muslimedu.attendance.data.local.DeviceSettings
 import com.muslimedu.attendance.data.local.StudentPhotoCache
 import com.muslimedu.attendance.data.repository.CardAssignResult
-import com.muslimedu.attendance.data.repository.FaceEnrollResult
+import com.muslimedu.attendance.data.repository.FaceCaptureResult
 import com.muslimedu.attendance.data.repository.FaceTemplateRepository
 import com.muslimedu.attendance.data.repository.StudentRepository
 import com.muslimedu.attendance.data.session.SessionManager
+import com.muslimedu.attendance.face.FaceAngle
+import com.muslimedu.attendance.face.FaceAngles
+import com.muslimedu.attendance.face.FaceTemplate
 import com.muslimedu.attendance.rfid.RfidEvent
 import com.muslimedu.attendance.rfid.RfidManager
 import com.muslimedu.attendance.rfid.normalizeRfidUid
@@ -20,6 +23,7 @@ import com.muslimedu.attendance.sync.RfidCardSyncManager
 import com.muslimedu.attendance.util.normalizePhMobile
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -53,22 +57,32 @@ sealed class RegistrationUiState {
     data class TapCard(val student: StudentEntity, val error: String? = null) : RegistrationUiState()
 
     /**
-     * The card is saved; now the face. [capturing]: the full-screen camera,
-     * which retries by itself ([attempt] re-arms it, [hint] says why the last
-     * try didn't take). Otherwise [error] (a face that belongs to another
-     * student - retrying can't fix that) or, when the student [hasFace]
-     * already, "keeping it" with a re-enroll option.
+     * The card is saved; now the face, one [FaceAngle] after another.
+     * [capturing]: the full-screen camera, which only fires at the asked
+     * angle ([angleIndex]) and retries by itself ([attempt] re-arms it,
+     * [hint] says why the last try didn't take). [captured] holds the
+     * angles taken so far - saved together once the last one is done.
+     * Otherwise [error] (a face that belongs to another student - retrying
+     * can't fix that) or, when the student already has [enrolledAngles],
+     * "keeping it" with a re-enroll option.
      */
     data class Face(
         val student: StudentEntity,
         val card: RegisteredCard,
-        val hasFace: Boolean,
+        val enrolledAngles: Int,
         val capturing: Boolean,
         val saving: Boolean = false,
         val error: String? = null,
         val attempt: Int = 0,
         val hint: String? = null,
-    ) : RegistrationUiState()
+        val angleIndex: Int = 0,
+        val captured: List<FaceTemplate> = emptyList(),
+        /** The yaw the first side was taken at - the other side must be the opposite way. */
+        val sideYaw: Float? = null,
+    ) : RegistrationUiState() {
+        val hasFace: Boolean get() = enrolledAngles > 0
+        val angle: FaceAngle get() = FaceAngle.entries[angleIndex.coerceIn(0, FaceAngle.entries.lastIndex)]
+    }
 
     /**
      * The parent's mobile number - where the gate texts go. Optional: the
@@ -78,14 +92,15 @@ sealed class RegistrationUiState {
     data class ParentPhone(
         val student: StudentEntity,
         val card: RegisteredCard?,
-        val faceEnrolled: Boolean,
+        /** Face angles enrolled; 0 = no face. */
+        val faceAngles: Int,
         val error: String? = null,
     ) : RegistrationUiState()
 
     data class Done(
         val student: StudentEntity,
         val card: RegisteredCard?,
-        val faceEnrolled: Boolean,
+        val faceAngles: Int,
         val phone: RegisteredPhone,
     ) : RegistrationUiState()
 }
@@ -109,9 +124,13 @@ data class RegistrationTarget(val student: StudentEntity, val start: Registratio
  *   the one-card-one-student rules of [StudentRepository.assignRfidCard]. A
  *   student who already has a card can keep it. The card is saved the moment
  *   it's read and sent to the server's card registry right away when online.
- * - Face: the same live auto-capture as the gate, saved by
- *   [FaceTemplateRepository.enroll], which refuses a face that matches
- *   another student's.
+ * - Face: the gate's live auto-capture, three times - straight, then a
+ *   little to each side ([FaceAngle]); the camera only fires at the asked
+ *   angle. Each angle is checked by [FaceTemplateRepository.captureAngle]
+ *   (refuses another student's face) and must still be the same person as
+ *   the straight one; all are saved together by
+ *   [FaceTemplateRepository.saveEnrollment]. A side the student can't
+ *   manage within [SIDE_ANGLE_TIMEOUT_MILLIS] is skipped.
  * - Parent number: a Philippine mobile number, saved on the device at once
  *   and on the parent's server account as soon as it can be sent
  *   ([ParentPhoneSyncManager]). Optional - skipping it only means that
@@ -144,6 +163,7 @@ class StudentRegistrationViewModel @Inject constructor(
     val readerStatus = rfidManager.status
 
     private var listenJob: Job? = null
+    private var angleTimeoutJob: Job? = null
     private var openedRequestId: Long? = null
 
     init {
@@ -179,6 +199,7 @@ class StudentRegistrationViewModel @Inject constructor(
     fun leave() {
         listenJob?.cancel()
         listenJob = null
+        angleTimeoutJob?.cancel()
     }
 
     fun selectStudent(student: StudentEntity) {
@@ -195,49 +216,119 @@ class StudentRegistrationViewModel @Inject constructor(
     fun onFaceCaptured(bitmap: Bitmap) {
         val state = _uiState.value as? RegistrationUiState.Face ?: return
         if (!state.capturing || state.saving) return
-        _uiState.value = state.copy(saving = true)
+        _uiState.value = state.copy(saving = true, hint = null)
         viewModelScope.launch {
             val student = state.student
-            val result = faceTemplateRepository.enroll(
+            val angle = state.angle
+            val result = faceTemplateRepository.captureAngle(
                 schoolId = student.schoolId,
                 studentId = student.studentId,
                 bitmap = bitmap,
-                enrolledBy = sessionManager.currentUser.value?.email ?: "device",
+                // Liveness is judged on the straight face; the sides must match it instead (below).
+                checkLiveness = angle == FaceAngle.STRAIGHT,
             )
-            // The admin may have left or moved on while this was saving.
+            // The admin may have left or moved on while this was checked.
             val current = _uiState.value as? RegistrationUiState.Face ?: return@launch
-            if (current.student.id != student.id) return@launch
-            val refused = { reason: String -> current.copy(capturing = false, saving = false, error = reason) }
+            if (current.student.id != student.id || current.angleIndex != state.angleIndex) return@launch
             // Not good enough yet: the same camera tries again by itself.
             val retry = { hint: String -> current.copy(capturing = true, saving = false, attempt = current.attempt + 1, hint = hint) }
-            _uiState.value = when (result) {
-                is FaceEnrollResult.Success -> {
-                    refreshCandidates()
-                    phoneStep(student, current.card, faceEnrolled = true)
+            when (result) {
+                is FaceCaptureResult.Captured -> {
+                    val first = current.captured.firstOrNull()
+                    if (first != null && faceTemplateRepository.sameFaceScore(first, result.template) < FaceAngles.SAME_PERSON_MIN_SCORE) {
+                        _uiState.value = retry("That doesn't look like the same person - keep ${student.name} in front of the camera")
+                    } else {
+                        nextAngle(
+                            current.copy(
+                                captured = current.captured + result.template,
+                                sideYaw = if (angle == FaceAngle.SIDE) result.template.yaw else current.sideYaw,
+                            ),
+                        )
+                    }
                 }
-                is FaceEnrollResult.NoFaceDetected -> retry("No face found - look straight at the camera")
-                is FaceEnrollResult.LivenessTooLow -> retry("Hold still in good light - trying again")
-                is FaceEnrollResult.AlreadyEnrolled -> {
+                is FaceCaptureResult.NoFaceDetected -> _uiState.value = retry("No face found - ${angle.instruction.lowercase()}")
+                is FaceCaptureResult.LivenessTooLow -> _uiState.value = retry("Hold still in good light - trying again")
+                is FaceCaptureResult.AlreadyEnrolled -> {
                     val other = studentRepository.find(student.schoolId, result.studentId)
                     val who = other?.let { "${it.name} (${it.code})" } ?: "another student"
-                    refused("This face is already enrolled for $who. Each student needs their own face - nothing was saved.")
+                    angleTimeoutJob?.cancel()
+                    _uiState.value = current.copy(
+                        capturing = false,
+                        saving = false,
+                        captured = emptyList(),
+                        error = "This face is already enrolled for $who. Each student needs their own face - nothing was saved.",
+                    )
                 }
             }
         }
     }
 
-    /** Opens the camera again - after a refused capture, or to replace a face already enrolled. */
+    /** On to the next angle, or - after the last - save them all and go to the parent's number. */
+    private suspend fun nextAngle(state: RegistrationUiState.Face) {
+        angleTimeoutJob?.cancel()
+        val next = state.angleIndex + 1
+        if (next > FaceAngle.entries.lastIndex) return finishFace(state)
+        _uiState.value = state.copy(angleIndex = next, capturing = true, saving = false, hint = null, attempt = state.attempt + 1)
+        // A student who can't manage this side: skip it rather than hold up the queue.
+        angleTimeoutJob = viewModelScope.launch {
+            delay(SIDE_ANGLE_TIMEOUT_MILLIS)
+            while (true) {
+                val current = _uiState.value as? RegistrationUiState.Face ?: return@launch
+                if (!current.capturing || current.angleIndex != next || current.student.id != state.student.id) return@launch
+                if (!current.saving) {
+                    // Its own coroutine: moving on cancels this job, and the last angle's save must not be cancelled with it.
+                    viewModelScope.launch { nextAngle(current) }
+                    return@launch
+                }
+                // A capture of this angle is being checked - let it finish first.
+                delay(250)
+            }
+        }
+    }
+
+    /** Saves the angles captured so far as the student's face (replacing any earlier one). */
+    private suspend fun finishFace(state: RegistrationUiState.Face) {
+        angleTimeoutJob?.cancel()
+        if (state.captured.isEmpty()) {
+            _uiState.value = phoneStep(state.student, state.card)
+            return
+        }
+        _uiState.value = state.copy(saving = true, hint = "Saving face...")
+        faceTemplateRepository.saveEnrollment(
+            schoolId = state.student.schoolId,
+            studentId = state.student.studentId,
+            templates = state.captured,
+            enrolledBy = sessionManager.currentUser.value?.email ?: "device",
+        )
+        refreshCandidates()
+        _uiState.value = phoneStep(state.student, state.card)
+    }
+
+    /** Opens the camera again from the first angle - after a refused capture, or to replace a face already enrolled. */
     fun captureFace() {
         val state = _uiState.value as? RegistrationUiState.Face ?: return
         if (state.saving) return
-        _uiState.value = state.copy(capturing = true, error = null, hint = null, attempt = state.attempt + 1)
+        angleTimeoutJob?.cancel()
+        _uiState.value = state.copy(
+            capturing = true,
+            error = null,
+            hint = null,
+            attempt = state.attempt + 1,
+            angleIndex = 0,
+            captured = emptyList(),
+            sideYaw = null,
+        )
     }
 
-    /** Goes on without a new face: keeps the enrolled one, or leaves the student without one for now. */
+    /**
+     * Goes on: with the angles already captured (the X on the camera part-way
+     * through), or without a new face - keeping the enrolled one, or leaving
+     * the student without one for now.
+     */
     fun skipFace() {
         val state = _uiState.value as? RegistrationUiState.Face ?: return
         if (state.saving) return
-        viewModelScope.launch { _uiState.value = phoneStep(state.student, state.card, faceEnrolled = state.hasFace) }
+        viewModelScope.launch { finishFace(state) }
     }
 
     /**
@@ -260,7 +351,7 @@ class StudentRegistrationViewModel @Inject constructor(
             _uiState.value = RegistrationUiState.Done(
                 updated,
                 state.card,
-                state.faceEnrolled,
+                state.faceAngles,
                 RegisteredPhone(phone, changed = true, serverNote = "Sending to the school server..."),
             )
             refreshCandidates()
@@ -274,7 +365,7 @@ class StudentRegistrationViewModel @Inject constructor(
         _uiState.value = RegistrationUiState.Done(
             state.student,
             state.card,
-            state.faceEnrolled,
+            state.faceAngles,
             RegisteredPhone(state.student.parentPhone, changed = false, serverNote = describePhoneSync(state.student, null)),
         )
     }
@@ -331,13 +422,17 @@ class StudentRegistrationViewModel @Inject constructor(
     }
 
     private suspend fun startFaceStep(student: StudentEntity, card: RegisteredCard, forceCapture: Boolean = false) {
-        val hasFace = faceTemplateRepository.hasTemplate(student.schoolId, student.studentId)
-        _uiState.value = RegistrationUiState.Face(student, card, hasFace = hasFace, capturing = !hasFace || forceCapture)
+        val angles = faceTemplateRepository.angleCount(student.schoolId, student.studentId)
+        _uiState.value = RegistrationUiState.Face(student, card, enrolledAngles = angles, capturing = angles == 0 || forceCapture)
     }
 
-    /** Re-read so the step shows the number a download or an earlier visit left. */
-    private suspend fun phoneStep(student: StudentEntity, card: RegisteredCard?, faceEnrolled: Boolean) =
-        RegistrationUiState.ParentPhone(studentRepository.reload(student) ?: student, card, faceEnrolled)
+    /** Re-read so the step shows the number (and face) a download or an earlier visit left. */
+    private suspend fun phoneStep(student: StudentEntity, card: RegisteredCard?) =
+        RegistrationUiState.ParentPhone(
+            studentRepository.reload(student) ?: student,
+            card,
+            faceTemplateRepository.angleCount(student.schoolId, student.studentId),
+        )
 
     /** Straight to the number (the Students list's phone icon), with whatever card and face the student has. */
     private suspend fun openPhoneStep(student: StudentEntity) {
@@ -345,8 +440,7 @@ class StudentRegistrationViewModel @Inject constructor(
         val card = current.rfidCardNumber?.let {
             RegisteredCard(it, replacedUid = null, kept = true, serverNote = describeCardSync(current, null))
         }
-        val hasFace = faceTemplateRepository.hasTemplate(current.schoolId, current.studentId)
-        _uiState.value = RegistrationUiState.ParentPhone(current, card, hasFace)
+        _uiState.value = RegistrationUiState.ParentPhone(current, card, faceTemplateRepository.angleCount(current.schoolId, current.studentId))
     }
 
     /** The upload finishes after the wizard has moved on - update whichever step is showing this student. */
@@ -416,5 +510,8 @@ class StudentRegistrationViewModel @Inject constructor(
 
         /** After the last digit of a valid number, before it saves by itself. */
         const val PHONE_SAVE_DELAY_MILLIS = 1_200L
+
+        /** How long a side angle waits for the turn before it's skipped. */
+        const val SIDE_ANGLE_TIMEOUT_MILLIS = 20_000L
     }
 }

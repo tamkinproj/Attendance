@@ -88,6 +88,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.muslimedu.attendance.data.db.entities.StudentEntity
+import com.muslimedu.attendance.face.FaceAngle
+import com.muslimedu.attendance.face.FaceAngles
 import com.muslimedu.attendance.rfid.ReaderStatus
 import com.muslimedu.attendance.ui.components.EmptyState
 import com.muslimedu.attendance.ui.components.InitialsAvatar
@@ -489,8 +491,11 @@ private fun TapCardStep(state: RegistrationUiState.TapCard, readerStatus: Reader
 
 /**
  * The face capture, full screen like the gate's face check: the camera
- * under the oval guide and scan animation, who it's for at the top, and one
- * control - skip. A try that doesn't take re-arms the same camera by itself.
+ * under the oval guide and scan animation, who it's for at the top, which
+ * angle to give (straight, then a little to each side) with a dot per
+ * angle, and one control - X, which finishes with the angles taken so far
+ * (or skips the face if there are none). The camera only fires at the
+ * asked angle; a try that doesn't take re-arms it by itself.
  */
 @Composable
 private fun FullScreenFaceCapture(
@@ -507,42 +512,104 @@ private fun FullScreenFaceCapture(
             modifier = Modifier.fillMaxSize(),
             fullScreen = true,
             captureKey = state.attempt,
-            message = if (state.saving) "Saving face..." else state.hint,
+            // The banner above says which angle; this line keeps the camera's live feedback unless there's a hint.
+            message = if (state.saving) state.hint ?: "Checking face..." else state.hint,
             busy = state.saving,
             accent = BrandTeal,
+            acceptYaw = { yaw -> FaceAngles.accepts(state.angle, yaw, state.sideYaw) },
         )
-        Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(onClick = onSkip, shape = CircleShape, color = Color.Black.copy(alpha = 0.55f)) {
-                Icon(Icons.Filled.Close, contentDescription = "Skip face", tint = Color.White, modifier = Modifier.padding(10.dp))
-            }
-            Surface(
-                color = Color.Black.copy(alpha = 0.55f),
-                shape = RoundedCornerShape(50),
-                modifier = Modifier.padding(start = 10.dp).weight(1f),
-            ) {
-                Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    val cached = photo
-                    if (cached != null) {
-                        Image(
-                            bitmap = cached.asImageBitmap(),
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.size(36.dp).clip(CircleShape),
-                        )
-                    } else {
-                        InitialsAvatar(student.name, BrandTeal, size = 36.dp)
+        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(onClick = onSkip, shape = CircleShape, color = Color.Black.copy(alpha = 0.55f)) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = if (state.captured.isEmpty()) "Skip face" else "Finish with the angles taken",
+                        tint = Color.White,
+                        modifier = Modifier.padding(10.dp),
+                    )
+                }
+                Surface(
+                    color = Color.Black.copy(alpha = 0.55f),
+                    shape = RoundedCornerShape(50),
+                    modifier = Modifier.padding(start = 10.dp).weight(1f),
+                ) {
+                    Row(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        val cached = photo
+                        if (cached != null) {
+                            Image(
+                                bitmap = cached.asImageBitmap(),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.size(36.dp).clip(CircleShape),
+                            )
+                        } else {
+                            InitialsAvatar(student.name, BrandTeal, size = 36.dp)
+                        }
+                        Column(modifier = Modifier.padding(start = 10.dp)) {
+                            Text(student.name, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                            Text(
+                                "Step 3 of ${REGISTRATION_STEPS.size} · Face enrollment",
+                                color = Color.White.copy(alpha = 0.8f),
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                            )
+                        }
                     }
-                    Column(modifier = Modifier.padding(start = 10.dp)) {
-                        Text(student.name, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                }
+            }
+            AngleBanner(state)
+        }
+    }
+}
+
+/** "Angle 2 of 3 - Turn your head a little to one side", with a dot per angle (filled once taken). */
+@Composable
+private fun AngleBanner(state: RegistrationUiState.Face) {
+    Surface(
+        color = Color.Black.copy(alpha = 0.55f),
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                FaceAngle.entries.forEachIndexed { index, angle ->
+                    val done = index < state.captured.size
+                    val current = index == state.angleIndex
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(if (current) 12.dp else 10.dp)
+                                .background(
+                                    when {
+                                        done -> BrandTeal
+                                        current -> Color.White
+                                        else -> Color.White.copy(alpha = 0.3f)
+                                    },
+                                    CircleShape,
+                                ),
+                        )
                         Text(
-                            "Step 3 of ${REGISTRATION_STEPS.size} · Face enrollment",
-                            color = Color.White.copy(alpha = 0.8f),
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 1,
+                            angle.title,
+                            color = if (current || done) Color.White else Color.White.copy(alpha = 0.55f),
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(start = 4.dp),
                         )
                     }
                 }
             }
+            Text(
+                "Angle ${state.angleIndex + 1} of ${FaceAngle.entries.size}",
+                color = Color.White.copy(alpha = 0.8f),
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+            Text(
+                state.angle.instruction,
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }
@@ -562,7 +629,20 @@ private fun FaceStatusStep(state: RegistrationUiState.Face, onCapture: () -> Uni
         return
     }
     StepHero(Icons.Filled.Face, BrandPrimary)
-    StepTitle("Face already enrolled", "${state.student.name} already has a face on this device.")
+    val angles = state.enrolledAngles
+    StepTitle(
+        "Face already enrolled",
+        "${state.student.name} already has a face on this device ($angles of ${FaceAngle.entries.size} angles).",
+    )
+    if (angles < FaceAngle.entries.size) {
+        Text(
+            "Re-enroll to capture all ${FaceAngle.entries.size} angles - the gate matches the best one, so fewer false rejections.",
+            style = MaterialTheme.typography.bodySmall,
+            color = AccentGold,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 10.dp),
+        )
+    }
     CountdownBar(
         millis = StudentRegistrationViewModel.KEEP_MILLIS,
         label = "Keeping it - next: parent's number",
@@ -721,8 +801,13 @@ private fun cardItem(card: RegisteredCard?): SummaryItem = if (card == null) {
     SummaryItem(Icons.Filled.CreditCard, true, "RFID card ${card.uid} $what", card.serverNote)
 }
 
-private fun faceItem(enrolled: Boolean): SummaryItem = if (enrolled) {
-    SummaryItem(Icons.Filled.Face, true, "Face enrolled", null)
+private fun faceItem(angles: Int): SummaryItem = if (angles > 0) {
+    SummaryItem(
+        Icons.Filled.Face,
+        true,
+        "Face enrolled · $angles of ${FaceAngle.entries.size} angles",
+        if (angles < FaceAngle.entries.size) "Re-enroll later to add the missing angles." else null,
+    )
 } else {
     SummaryItem(Icons.Filled.Face, false, "No face enrolled", "The gate refuses this student until a face is enrolled.")
 }
@@ -748,7 +833,7 @@ private fun DoneStep(state: RegistrationUiState.Done, openedForStudent: Boolean,
     }
     StepTitle("Registered!", "${state.student.name} is ready for the gate.")
 
-    val items = listOf(cardItem(state.card), faceItem(state.faceEnrolled), phoneItem(state.phone))
+    val items = listOf(cardItem(state.card), faceItem(state.faceAngles), phoneItem(state.phone))
     Card(
         shape = RoundedCornerShape(20.dp),
         modifier = Modifier.fillMaxWidth().padding(top = 20.dp),

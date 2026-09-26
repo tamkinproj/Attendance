@@ -52,6 +52,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.muslimedu.attendance.data.db.entities.StudentEntity
+import com.muslimedu.attendance.face.FaceAngle
 import com.muslimedu.attendance.ui.components.EmptyState
 import com.muslimedu.attendance.ui.theme.AccentGold
 import com.muslimedu.attendance.ui.theme.AccentRed
@@ -241,6 +242,7 @@ private fun StudentListRow(
                         style = MaterialTheme.typography.bodySmall,
                     )
                     CardSyncLine(student)
+                    FaceAnglesLine(row.faceAngles)
                     PhoneSyncLine(student)
                 }
             }
@@ -277,6 +279,22 @@ private fun StatusAction(icon: ImageVector, label: String, ok: Boolean, descript
     ) {
         Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
         Text(label, color = color, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(start = 4.dp))
+    }
+}
+
+/**
+ * Only for a face with fewer than all its angles (enrolled before multi-angle,
+ * or a side skipped): the gate matches the best angle, so the missing ones
+ * mean more false rejections for this student.
+ */
+@Composable
+private fun FaceAnglesLine(angles: Int) {
+    if (angles in 1 until FaceAngle.entries.size) {
+        Text(
+            "Face: $angles of ${FaceAngle.entries.size} angles - re-register for better matching",
+            style = MaterialTheme.typography.labelSmall,
+            color = AccentGold,
+        )
     }
 }
 

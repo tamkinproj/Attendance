@@ -23,7 +23,7 @@ import com.muslimedu.attendance.data.db.entities.StudentEntity
         AuditLogEntity::class,
         GateScanEntity::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -139,6 +139,22 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE `gate_scans` ADD COLUMN `is_late` INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE `gate_scans` ADD COLUMN `minutes_late` INTEGER")
                 db.execSQL("ALTER TABLE `gate_scans` ADD COLUMN `late_after` TEXT")
+            }
+        }
+
+        /**
+         * Several face angles per student: a `pose` column, and the unique
+         * index moves from (school, student) to (school, student, pose).
+         * Faces enrolled before this become pose 0 and keep working.
+         */
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `face_templates` ADD COLUMN `pose` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("DROP INDEX IF EXISTS `index_face_templates_school_id_student_id`")
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_face_templates_school_id_student_id_pose` " +
+                        "ON `face_templates` (`school_id`, `student_id`, `pose`)",
+                )
             }
         }
     }
