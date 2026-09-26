@@ -330,6 +330,34 @@ this device), the same pieces the old gate screen used.
     gives an impostor up to three tries at the threshold instead of one -
     watch for that when tuning Face Settings on real phones. Face counts
     are students, not rows (`COUNT(DISTINCT student_id)`).
+- **Gate device health** (the user's pick from the feature list: "last
+  synced time, battery, and whether the RFID reader is connected, so an
+  admin can see a gate that's gone offline without walking over to it").
+  `DeviceHealthReporter` posts a snapshot to `admin_gate_device_heartbeat`:
+  `DeviceSettings.deviceUid` (random per install), model, Android and app
+  version, battery % + charging (`BatteryManager`), reader plugged in
+  (`RfidManager.currentStatus()`, read from the USB port so it works with no
+  screen open), network type, attendance waiting to upload + the oldest's
+  time, refused uploads, last upload / last full sync
+  (`DeviceSettings.lastSyncOkAt`, set when an upload run finishes with
+  nothing stopped) / last scan, today's recorded + face-failed counts
+  (`GateScanDao.health`), students / cards / faces on the phone, schedule
+  set, camera permission, app on screen (`MainActivity` onStart/onStop),
+  free storage and the phone's time. When: every 5 min while the process
+  runs (`start()` from `App.onCreate`), after every `SyncWorker` run (every
+  15 min even with the app closed), 3 s after the reader or charger is
+  plugged/unplugged or the app opens/closes (`reportSoon`, debounced), and
+  Sync & Account's "Report now". Throttled to one a minute unless forced;
+  never queued (a missed report is replaced by the next); 404/405/501 =
+  "not set up on the school server yet". The server answers with the name
+  the admin gave the phone on the web and the **clock skew**: the gate
+  dashboard shows a red "This phone's clock is 12 min fast" card (tap opens
+  date & time settings) at 5+ min off (`DeviceHealth.clockWarning`) - scans
+  are stamped with the phone's clock, so a wrong one means wrong times, Late
+  flags and parent texts. Sync & Account has a "This gate device" card (web
+  name, last report, live battery/reader/app version, Report now). CI builds
+  are versioned `0.1.<GITHUB_RUN_NUMBER>` (versionCode = run number) so the
+  web shows which build each gate runs; local builds are `0.1.0-local`.
 - Admin screens (Register Card, Face & Number, Students, Parent SMS, Gate
   Schedule, Face Settings, Audit Log, Sync & Account, Change PIN) sit behind a **device PIN**
   (`AdminPinManager`: salted PBKDF2 hash in Keystore-backed encrypted prefs,
@@ -403,6 +431,41 @@ assuming it's live. It is cumulative (includes the earlier route fix).
 - Cleanup left to the user: `app/Http/Controllers/AttendanceApi.php` is a
   byte-identical stray copy of the trait (wrong folder for its namespace),
   plus many backup files (`api.php1`, `ApiController.phpe`, `*.phpo`, ...).
+
+### Gate device health (Laravel + web - not in this repo)
+
+Delivered as `gate-devices-patch.zip` (only the new/changed files, as the
+user asked), same "not deployed until uploaded" status.
+- **`gate_devices`** table (migration `2026_09_26_000005`, raw SQL
+  `database/sql/gate-devices.sql`, which also records the migration as run;
+  checked on MariaDB, run twice): one row per phone, unique
+  `(school_id, device_uid)`, live state only - each heartbeat overwrites it.
+- **`GateDevice`** model: `findForHeartbeat` - this install's row, else,
+  because every update of this sideloaded app is a reinstall with a new
+  device id, the most recently seen row of the **same model** in the school
+  that has been quiet 10+ min is taken over (keeps the admin's name for it;
+  two identical phones reinstalled together may swap names). `warnings()`:
+  danger = offline (no report for 20 min), reader not connected, camera
+  permission off, clock 5+ min off, battery <= 10% not charging; warning =
+  battery <= 20% not charging, schedule not set, uploads waiting 30+ min,
+  uploads refused, storage < 200 MB; info = not on the charger, app not on
+  screen, older app build than another gate. `overviewForSchool` sorts
+  attention first, then offline, then name; today's counts are hidden once
+  the last report is from an earlier day.
+- Endpoints (admin, own school; all 501 until the table exists):
+  `admin_gate_device_heartbeat`, `admin_gate_devices`,
+  `admin_gate_device_update` (name), `admin_gate_device_remove`.
+- Web **Gate Devices** (`gate-devices.php/.js`, tile next to Gate Students):
+  tabs All / Needs attention / Online / Offline with counts; a card per
+  phone (status + "reported 3 min ago", battery, reader, uploads, today's
+  scans, warnings); detail sheet with everything reported, rename, remove.
+  Refreshes every minute while visible; "ago" uses the server's clock.
+- Verified: `php -l`; 26 checks against SQLite with real Eloquent
+  (`laraveltest/device_test.php`: skew, timezone conversion, takeover rules,
+  every warning, offline threshold, overview order/counts, day rollover,
+  build note); the page in headless Chromium with a response generated by
+  the real model (tabs, order, warnings, detail, rename/remove calls, empty
+  and 501 states, dashboard tile). Not run in the full Laravel app.
 
 ### Gate SMS notifications for parents (Laravel - not in this repo)
 
