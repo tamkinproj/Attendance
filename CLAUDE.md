@@ -605,6 +605,72 @@ registered: N of 3 angles" (`face_angles` / `face_sharing` in the
 overview). Checked with 14 checks against SQLite + Laravel's real
 Encrypter (`laraveltest/faces_test.php`); not run in the full app.
 
+### Security update (Laravel + web - not in this repo)
+
+From a security review of the Laravel/web copy the user supplied, delivered
+as `security-update.zip` (needs `face-sharing-update.zip` first). Review
+findings, proven where possible: uploads could be HTML/SVG pages on
+manhaje.com that read the web app's localStorage token (shown in Chromium);
+a self-registered school's admin had full admin API access (approval was
+only checked in dashboard.js); an unauthenticated `/api/run-comment-column-fix-4q9wz`
+route altered the DB; password resets didn't revoke tokens. The old blade
+web controllers (any admin could edit/delete any user) are unreachable
+while `RestrictToApi` stays - dormant, not fixed. The modern API scoped
+every user/section lookup by school; no SQL injection found.
+- `BlockUnsafeUploads` (global middleware): refuses html/svg/xml/js and
+  server-script names/content on every upload (last extension, any
+  script extension in the name, sniffed type, .htaccess/.user.ini).
+- `.htaccess` for `public/assets/{uploads,csv_file,word_file,upload}`: no
+  PHP, script/page files denied, `CSP: sandbox` + nosniff on everything
+  but PDFs (Chrome won't show a sandboxed PDF); svg denied when
+  mod_headers is missing. Tested on Apache 2.4 + mod_php incl. missing
+  modules.
+- `EnsureSchoolApproved` (`school.approved`, on the auth:sanctum group):
+  pending/rejected schools reach only me/logout/user settings/password/
+  translations.
+- Password reset deletes the user's tokens; `AppServiceProvider` rejects
+  tokens unused for 90 days (`Sanctum::authenticateAccessTokensUsing`,
+  checked before `last_used_at` is updated - gate phones report every 5
+  min so never idle). Guidance chat links no longer use inline onclick.
+
+### Web app's own door (Laravel + web - not in this repo)
+
+The user asked for the web version to have its own backend and not use the
+API, same UI. Chosen design (asked, they picked it): the same Laravel app
+answers the web app at `https://manhaje.com/apps/web/...` with a session
+cookie (HttpOnly) + CSRF, instead of `/apps/api` + a token in
+localStorage. Delivered as `web-door-update.zip` (needs the security
+update). The phone and gate apps keep `/api` + tokens.
+- `RouteServiceProvider` loads `routes/api.php` a second time under
+  `web/` with `['web', 'throttle:api', EnsureWebSession]`, then
+  `routes/webapp.php` overrides login/logout/logout-all and adds
+  `csrf` + `revoke-old-token` (695 endpoints mirrored, nothing copied).
+  The only named API route (`messenger.webhook`) gets `web.` on its /web
+  copy so `route()` still points at /api and route:cache works.
+  `RestrictToApi` allows `web/`.
+- `WebAppAuthController::login` runs `ApiController::login` itself (same
+  roles, 2FA, pre-registration answers, generic errors), deletes the
+  token it made and logs in the `web` guard (remember-me 30 days).
+  `EnsureWebSession` signs a session out when the password or remember
+  token changed (reset / log out of all devices) or the account is
+  disabled. `TwoFactorController::deviceSessionsList` handles the
+  TransientToken of a session user.
+- Web app: pages live in their own folder (e.g. manhaje.com/qq/), Laravel
+  at /apps, so the base is `location.origin + '/apps/web'`. The cookie +
+  CSRF code is a block at the top of `offline-data.js` (loaded first on
+  every page; three pages that lacked it gain the script tag): adds
+  `X-XSRF-TOKEN`, fetches `/web/csrf` first when needed, retries once on
+  419, and ends/removes any old localStorage token. `getStoredToken()`
+  returns a stand-in so no page code changed; `sw.js` never caches /web/.
+- `.env`: `SESSION_DRIVER` must not be `database` - the app's `sessions`
+  table is school years.
+- Tested on a rebuilt copy of the Laravel app (Laravel 10, MariaDB, all
+  updates, pages at /qq and Laravel at /apps): 22 curl checks + remember-
+  me/logout-all, 18 Chromium checks through the real pages (sign-in,
+  dashboard via /web only, JSON + multipart saves, stale CSRF recovery,
+  old-token cleanup, offline queue replay, sign-out), public forgot-
+  password and admin sign-in. Not tested on the real server/.htaccess.
+
 ### Gate SMS notifications for parents (Laravel - not in this repo)
 
 Delivered as `sms-gateway-patch.zip`, same "not deployed until uploaded"
