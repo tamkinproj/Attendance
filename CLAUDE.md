@@ -309,14 +309,36 @@ was already there - not built this session - so Messenger stays what it
 was: a free bonus channel for a parent who's connected and stays active,
 never the reliable path.
 
-- **SMS via Semaphore** (semaphore.co, ~PHP 0.35-0.56/text, no monthly fee,
-  reaches all 4 PH networks) is the reliable channel: no opt-in, no time
-  window, just needs the parent's phone number. `SmsGatewaySetting` (one
-  global row, same shape as `MessengerIntegration`) + `SendSmsNotification`
-  job (one HTTP POST with an API key - no OAuth, unlike Globe Labs' telco
-  API, which was considered for its free PHP 1,000 sign-up credit but not
-  used, since its OAuth token lifecycle is a heavier integration for the
-  same result).
+- **Two SMS providers, picked per-install** (`SmsGatewaySetting.provider`,
+  one global row like `MessengerIntegration`) - both reliable: no opt-in,
+  no time window, just the parent's phone number. `SendSmsNotification`
+  sends through whichever is active, each with its own phone-number shape
+  (Semaphore: local `09...`; the Android gateway: E.164 `+63...` - both
+  derived automatically from whatever an admin types in):
+  - **Semaphore** (semaphore.co, ~PHP 0.35-0.56/text, no monthly fee,
+    reaches all 4 PH networks) - paid, one HTTP POST with an API key, no
+    OAuth. Globe Labs' telco API was considered for its free PHP 1,000
+    sign-up credit but not used - its OAuth token lifecycle is a heavier
+    integration for the same result.
+  - **Android phone gateway** - genuinely free, the user's own follow-up
+    ask after hearing Semaphore's real cost. An old Android phone with its
+    own SIM becomes the sender, via the free, open-source "SMS Gateway for
+    Android" app (github.com/capcom6/android-sms-gateway, docs.sms-gate.app).
+    Its **Cloud mode** is what this points at - no VPS or port-forwarding,
+    the phone connects outbound to the project's own public relay
+    (`https://api.sms-gate.app/3rdparty/v1/messages`, Basic Auth with the
+    device username/password the app shows once switched to Cloud mode).
+    Confirmed by reading the project's actual docs, not assumed. Real
+    trade-offs, stated plainly: depends on one physical phone staying
+    charged and online with nothing here detecting if it goes offline, a
+    carrier can throttle/flag a SIM sending a lot of automated texts, and
+    every message passes through that shared public relay (their own
+    "Private Server" self-hosting option avoids that, at the cost of
+    running a Docker container - not wired up here).
+  - Settings page shows both as selectable option cards; picking one
+    reveals its own fields and setup instructions inline (the Android
+    gateway's card explains installing the app and switching it to Cloud
+    mode right there, rather than sending the admin elsewhere to find out).
 - **The hook**: `AttendanceApi::admin_gate_attendance_scan()` calls
   `notifyParentOfGateScan()` right after a scan is confirmed and saved -
   never for a rejected/face-not-confirmed scan, never for a retried/
@@ -345,14 +367,16 @@ never the reliable path.
   guaranteed-current copy of (unlike the gate-patch files, which come from
   this session's own earlier delivered zip), so overwriting them wholesale
   risked silently reverting unrelated changes.
-- Real ongoing cost, since there's no way to make actual carrier SMS free:
-  roughly `students x events/day x school days/month x PHP 0.35-0.56` - for
-  300 students at 2 events/day, ~PHP 4,200-6,700/month. Globe Labs' PHP
-  1,000 free sign-up credit covers testing, not ongoing volume.
+- Real ongoing cost on Semaphore, since there's no way to make actual
+  carrier SMS free through a commercial gateway: roughly
+  `students x events/day x school days/month x PHP 0.35-0.56` - for 300
+  students at 2 events/day, ~PHP 4,200-6,700/month. Globe Labs' PHP 1,000
+  free sign-up credit covers testing, not ongoing volume. The Android
+  gateway avoids this cost entirely at the trade-offs stated above.
 - **Known limits**, same "say it plainly" discipline as the rest of this
   doc: a student needs both a linked parent account AND a phone on it -
   neither is guaranteed to exist yet, this patch only adds the column and
-  the UI to fill it in. One Semaphore account for the whole platform, not
+  the UI to fill it in. One gateway account for the whole platform, not
   per school (same choice already made for Messenger) - a true multi-school
   SaaS would want billing split per school instead. No SMS on a rejected/
   failed face check. Not gated by the existing `NotificationPreference`
@@ -360,11 +384,12 @@ never the reliable path.
 - Verified the same way as the gate patch: `php -l` on every new/edited PHP
   file; the two edited JS files (`gate-students.js`, the new
   `sms-gateway-settings.js`) passed `node -c` and were driven end-to-end in
-  headless Chromium against a mocked API (save settings, send a test
-  message, edit and save a parent's phone from the student detail sheet,
-  and the "no parent account linked" message for a student with none).
-  **Not run** against the real Laravel app, a real Semaphore account, or a
-  real phone.
+  headless Chromium against a mocked API (both provider option cards
+  swap fields correctly, save, send a test message, edit and save a
+  parent's phone from the student detail sheet, and the "no parent account
+  linked" message for a student with none). **Not run** against the real
+  Laravel app, a real Semaphore or Android-gateway account, or a real
+  phone.
 
 **Not verified on a device**: the app compiles and its unit tests run in CI,
 but the RFID reader, camera and migration need real hardware - especially
