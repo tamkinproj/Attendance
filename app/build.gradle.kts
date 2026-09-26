@@ -6,6 +6,16 @@ plugins {
     id("org.jetbrains.kotlin.kapt")
 }
 
+/*
+ * The fixed key every CI build is signed with (GitHub secrets, decoded by
+ * .github/workflows/build.yml). An APK signed with the same key as the one
+ * installed installs over it and keeps the phone's cards, faces and unsent
+ * scans; a different key forces an uninstall, which wipes them. The key is
+ * never in this repo (it's public). Without it - a local build, a fork - the
+ * build falls back to the debug key, and CI labels that APK as not for gates.
+ */
+val gateKeystore: File? = System.getenv("GATE_KEYSTORE_FILE")?.let { file(it) }?.takeIf { it.isFile }
+
 android {
     namespace = "com.muslimedu.attendance"
     compileSdk = 34
@@ -27,17 +37,30 @@ android {
         buildConfigField("String", "API_BASE_URL", "\"https://manhaje.com/apps/api/\"")
     }
 
+    signingConfigs {
+        if (gateKeystore != null) {
+            create("gate") {
+                storeFile = gateKeystore
+                storeType = "PKCS12"
+                storePassword = System.getenv("GATE_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("GATE_KEY_ALIAS") ?: "gate"
+                // PKCS12: the key's password is the store's.
+                keyPassword = System.getenv("GATE_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
+        // Both APKs get the gate key, so installing either never forces an uninstall.
+        debug {
+            if (gateKeystore != null) signingConfig = signingConfigs.getByName("gate")
+        }
         release {
             isMinifyEnabled = false
-            // The app is sideloaded, not on a store yet. Without a signing
-            // config the release APK came out unsigned and couldn't be
-            // installed, so only the debug APK was used - and debug builds
-            // are debuggable, which makes Compose (typing, scrolling, taps)
-            // noticeably laggy on budget phones. Signed with the debug key
-            // for now so this fast build installs; switch to a real release
-            // key before publishing.
-            signingConfig = signingConfigs.getByName("debug")
+            // Sideloaded, not on a store. The release APK is the one for the
+            // gate phones - debug builds are debuggable, which makes Compose
+            // noticeably laggy on budget phones.
+            signingConfig = signingConfigs.getByName(if (gateKeystore != null) "gate" else "debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

@@ -6,6 +6,14 @@ on:
   pull_request:
     branches: [ main, develop ]
 
+# The gate signing key's certificate (public - only its fingerprint, not the
+# key). Every APK must be signed with this key to install over the one on the
+# gate phones without an uninstall, which would wipe their cards, faces and
+# unsent scans. The key itself comes from two repository secrets:
+# GATE_KEYSTORE_BASE64 and GATE_KEYSTORE_PASSWORD.
+env:
+  GATE_CERT_SHA256: fe4d94a06c99ed8aad30b20d2674186688f20322c688ba3e289e6de12c375bb5
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -40,24 +48,58 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Set up the gate signing key
+        env:
+          GATE_KEYSTORE_BASE64: ${{ secrets.GATE_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$GATE_KEYSTORE_BASE64" ]; then
+            echo "::warning title=No gate signing key::The GATE_KEYSTORE_BASE64 secret is not set, so these APKs are signed with a throwaway key and will NOT install over the app on the gate phones."
+            exit 0
+          fi
+          # Pasted secrets can pick up line breaks or spaces - drop them.
+          printf '%s' "$GATE_KEYSTORE_BASE64" | tr -d ' \r\n' | base64 -d > "$RUNNER_TEMP/gate-release.p12"
+          echo "GATE_KEYSTORE_FILE=$RUNNER_TEMP/gate-release.p12" >> "$GITHUB_ENV"
+
       - name: Build with Gradle
+        env:
+          GATE_KEYSTORE_PASSWORD: ${{ secrets.GATE_KEYSTORE_PASSWORD }}
+          GATE_KEY_ALIAS: gate
         run: ./gradlew clean build --stacktrace
+
+      # With the key set up, every APK must carry exactly the gate key - a
+      # wrong or replaced key fails here instead of reaching a gate phone.
+      - name: Check the APK signatures
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          for apk in app/build/outputs/apk/release/*.apk app/build/outputs/apk/debug/*.apk; do
+            sha=$("$APKSIGNER" verify --print-certs "$apk" | grep -m1 'certificate SHA-256 digest' | awk '{print $NF}')
+            echo "$apk -> $sha"
+            if [ "$sha" = "$GATE_CERT_SHA256" ]; then
+              echo "### ✅ $(basename "$apk") is signed with the gate key - installs over the app on the gate phones" >> "$GITHUB_STEP_SUMMARY"
+            elif [ -n "$GATE_KEYSTORE_FILE" ]; then
+              echo "::error title=Wrong signing key::$apk is signed with $sha, not the gate key $GATE_CERT_SHA256. Check the GATE_KEYSTORE_BASE64 / GATE_KEYSTORE_PASSWORD secrets."
+              exit 1
+            else
+              echo "### ⚠️ $(basename "$apk") is NOT signed with the gate key - don't install it on a gate phone" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
 
       - name: Upload APK Debug
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: apk-debug
+          name: ${{ env.GATE_KEYSTORE_FILE != '' && 'apk-debug' || 'apk-debug-NOT-FOR-GATE-PHONES' }}
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 30
 
       # The one to install on the gate phone: not debuggable, so it runs
-      # much smoother than the debug APK.
+      # much smoother than the debug APK. Named so a build without the gate
+      # key can't be mistaken for it.
       - name: Upload APK Release
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: apk-release-install-this
+          name: ${{ env.GATE_KEYSTORE_FILE != '' && 'apk-release-install-this' || 'apk-release-NOT-FOR-GATE-PHONES' }}
           path: app/build/outputs/apk/release/*.apk
           retention-days: 30
 

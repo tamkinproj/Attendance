@@ -1335,11 +1335,30 @@ Two separate causes, both fixed:
    real key before any store) and CI uploads it as
    `apk-release-install-this`. Install that one on the gate phone.
 
-   CI creates a fresh debug key on every run, so each new APK is signed
-   differently and won't install over the previous one without an
-   uninstall - which wipes the device's cards, faces and unsynced scans.
-   A fixed signing key (stored as a GitHub secret) would fix that; not set
-   up yet.
+   **Fixed signing key (the fix for "every update wipes the phone").** CI
+   used to sign with a fresh debug key each run, so each APK needed an
+   uninstall first - wiping the phone's cards, faces and unsent scans. Now
+   both APKs are signed with one permanent key: a 4096-bit RSA PKCS12
+   keystore (alias `gate`, valid 100 years) generated for the user and
+   **never committed** (the repo is public; `*.p12`/`*.jks`/`*.keystore` are
+   git-ignored). CI reads it from two repository secrets,
+   `GATE_KEYSTORE_BASE64` (the keystore, base64; line breaks/spaces from a
+   paste are stripped) and `GATE_KEYSTORE_PASSWORD` (store = key password),
+   writes it to `$RUNNER_TEMP` and passes `GATE_KEYSTORE_FILE` to Gradle
+   (`gateKeystore` in `app/build.gradle.kts`, signing config `gate`). The
+   workflow's `GATE_CERT_SHA256` is the key's public certificate fingerprint:
+   "Check the APK signatures" (apksigner) fails the build if the secrets
+   produce any other key, and without the secrets (a fork, or before they
+   were added) the build falls back to the debug key and uploads
+   `apk-release-NOT-FOR-GATE-PHONES` instead of `apk-release-install-this`,
+   so a wrong-key APK can't be mistaken for the real one. Android also
+   needs the new APK's versionCode >= the installed one's - it is the CI run
+   number, which only grows. **Lose the keystore and the next update wipes
+   the phones again** - the user was told to keep a private backup; GitHub
+   secrets can't be read back. The switch itself needs one last uninstall
+   per phone (the old APKs carry old random keys): upload everything first,
+   then reinstall; cards and parent numbers come back with the student
+   download, faces must be registered again that one time.
 
 ### Plugging in the reader throws you back to the dashboard
 Symptom: on Assign RFID Card (now the wizard's card step, "Tap <name>'s card on the reader"), plugging
