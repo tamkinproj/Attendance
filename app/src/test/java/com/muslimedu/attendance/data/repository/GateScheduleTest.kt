@@ -5,6 +5,7 @@ import com.muslimedu.attendance.data.db.entities.GateScanEntity.Companion.DIRECT
 import com.muslimedu.attendance.data.db.entities.GateScanEntity.Companion.DIRECTION_OUT
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalTime
@@ -163,5 +164,27 @@ class GateScheduleTest {
         assertFalse(GateSchedule.lateAfterValid(wholeDay.inTimes, wholeDay.outTimes, listOf(t("05:59"), null)))
         assertFalse(GateSchedule.lateAfterValid(wholeDay.inTimes, wholeDay.outTimes, listOf(t("11:30"), null)))
         assertFalse(GateSchedule.lateAfterValid(wholeDay.inTimes, wholeDay.outTimes, listOf(t("07:30"))))
+    }
+
+    // ── "Not arrived" cutoff ─────────────────────────────────────────
+
+    @Test
+    fun `not-arrived time starts an hour after the late time, else three hours after opening`() {
+        val morning = listOf(t("06:00")) to listOf(t("11:00"))
+        assertEquals(t("08:30"), GateSchedule.defaultAbsenceCutoff(morning.first, morning.second, listOf(t("07:30"))))
+        assertEquals(t("09:00"), GateSchedule.defaultAbsenceCutoff(morning.first, morning.second, listOf(null)))
+        // Doesn't fit before Going Out: halfway instead.
+        assertEquals(t("07:00"), GateSchedule.defaultAbsenceCutoff(listOf(t("06:00")), listOf(t("08:00")), listOf(null)))
+    }
+
+    @Test
+    fun `not-arrived time must be after the opening and the late time and before Going Out`() {
+        val ins = listOf(t("06:00"))
+        val outs = listOf(t("11:00"))
+        assertNull(GateSchedule.absenceCutoffProblem(t("09:00"), ins, outs, listOf(t("07:30"))))
+        assertNull(GateSchedule.absenceCutoffProblem(t("06:01"), ins, outs, listOf(null)))
+        assertTrue(GateSchedule.absenceCutoffProblem(t("06:00"), ins, outs, listOf(null))!!.contains("after Coming In 1 opens (6:00 AM)"))
+        assertTrue(GateSchedule.absenceCutoffProblem(t("07:30"), ins, outs, listOf(t("07:30")))!!.contains("after Late after (7:30 AM)"))
+        assertTrue(GateSchedule.absenceCutoffProblem(t("11:00"), ins, outs, listOf(null))!!.contains("before Going Out 1 opens (11:00 AM)"))
     }
 }

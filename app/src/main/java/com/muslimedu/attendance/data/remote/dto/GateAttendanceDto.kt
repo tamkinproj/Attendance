@@ -147,6 +147,8 @@ data class GateSmsTemplatesUpdateRequest(
     @SerializedName("out_template") val outTemplate: String?,
     /** The Coming In text for a late scan. Omitted by a caller that doesn't edit it (the server keeps it). */
     @SerializedName("late_template") val lateTemplate: String? = null,
+    /** The "not arrived" text. Omitted by a caller that doesn't edit it. */
+    @SerializedName("absent_template") val absentTemplate: String? = null,
 )
 
 /**
@@ -162,6 +164,9 @@ data class GateSmsTemplatesData(
     /** Null from a server without late messages - the screen then hides that message. */
     @SerializedName("late_template") val lateTemplate: String? = null,
     @SerializedName("default_late") val defaultLate: String? = null,
+    /** Null from a server without the "not arrived" alert - the screen then hides that message. */
+    @SerializedName("absent_template") val absentTemplate: String? = null,
+    @SerializedName("default_absent") val defaultAbsent: String? = null,
     @SerializedName("placeholders") val placeholders: List<String>?,
     @SerializedName("max_length") val maxLength: Int?,
     @SerializedName("school_name") val schoolName: String?,

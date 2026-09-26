@@ -55,6 +55,15 @@ class ParentSmsTest {
     }
 
     @Test
+    fun `the not-arrived text names the cutoff time`() {
+        // Same text the server's GateAbsenceService sent in its test.
+        assertEquals(
+            "Manhaj Academy: Ang inyong anak na si Malik Aziz ay hindi pa pumapasok sa paaralan hanggang 9:00 AM (Sep 28, 2026).",
+            SmsTemplate.render(SmsTemplate.DEFAULT_ABSENT, "Malik Aziz", "C-Malik Aziz", "09:00", "2026-09-28", "Manhaj Academy"),
+        )
+    }
+
+    @Test
     fun `every placeholder is filled`() {
         assertEquals(
             "S: A (C1) 12:00 PM Jan 2, 2026",

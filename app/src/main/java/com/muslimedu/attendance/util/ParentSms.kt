@@ -38,6 +38,9 @@ object SmsTemplate {
 
     /** Sent instead of the Coming In text when the scan was after its "Late after" time. */
     const val DEFAULT_LATE = "{school}: Ang inyong anak na si {student} ay pumasok sa paaralan ng {time} ({date}) - huli ng {minutes_late} minuto."
+
+    /** Sent by the server at the "not arrived" cutoff to parents of students with no scan yet; {time} is the cutoff. */
+    const val DEFAULT_ABSENT = "{school}: Ang inyong anak na si {student} ay hindi pa pumapasok sa paaralan hanggang {time} ({date})."
     /** The texts start with the school's name, so parents see who it's from - the phone gateway's sender is only a number. */
     private val LEADING_SEPARATOR = Regex("""^[:\-\s]+""")
     val PLACEHOLDERS = listOf("{student}", "{code}", "{time}", "{date}", "{school}", "{minutes_late}")

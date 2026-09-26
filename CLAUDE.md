@@ -91,6 +91,22 @@ this device), the same pieces the old gate screen used.
     until the admin sets one - a default time the school never chose could
     flag students (and text parents) wrongly. Stored as
     `gate_late_after` ("07:30,-") in `DeviceSettings`.
+  - **Not arrived alert** (the user's pick after the signing key): a
+    card under the times on the same screen - on/off, "Not arrived by"
+    time, "Text parents", school days (M T W T F S S circles). Unlike the
+    rest of the screen it is **kept on the server** (the server sends those
+    texts): loaded on open (`GateScheduleViewModel.loadAbsence`,
+    `admin_gate_absence_settings`), saved after the schedule
+    (`saveAbsence` -> `admin_gate_absence_settings_update`); offline or an
+    old server shows why and the schedule still saves on the phone ("Gate
+    schedule saved. The not-arrived alert wasn't saved: ..."). Default time
+    = first Late after + 60 min, else first Coming In + 3 h (6:00 -> 9:00),
+    always before Going Out 1 (`GateSchedule.defaultAbsenceCutoff`); it
+    must be after Coming In 1 opens, after its Late after, and before Going
+    Out 1 (`absenceCutoffProblem`). Parent SMS gets a fourth message, **Not
+    arrived** ({time} = the cutoff; default "{school}: Ang inyong anak na si
+    {student} ay hindi pa pumapasok sa paaralan hanggang {time} ({date})."),
+    hidden until the server has `absent_template`.
 - **Gate dashboard** (`GateDashboardScreen`, the home screen, no PIN):
   Coming In / Going Out buttons, sync status (pending count, last synced,
   Sync now), recent RFID records, "View all" -> `GateHistoryScreen` (by day,
@@ -479,6 +495,52 @@ user asked), same "not deployed until uploaded" status.
   and 501 states, dashboard tile) and as superadmin (school picker,
   headings, per-school tabs, read-only sheet, superadmin tile). Not run in
   the full Laravel app.
+
+### Not arrived alert (Laravel + web - not in this repo)
+
+Delivered as `gate-absence-update.zip` (only new/changed files; needs the
+gate-devices patch first, since it relies on the heartbeat and
+`gate_devices`). Migration `2026_09_26_000006` / `database/sql/gate-absence.sql`
+(MariaDB-checked; the `absent_template` column add is last so a re-run only
+errors on that line): `gate_absence_settings` (per school: `cutoff_time`
+null = off, `text_parents`, `school_days` "1,2,3,4,5"),
+`gate_absence_alerts` (unique `(student_id, date)` - one text per student
+per day, also what stops two phones' reports double-texting),
+`gate_no_school_days`, `gate_sms_templates.absent_template`.
+- **`GateAbsenceService::run`** - no cron on this server (`Kernel` schedule
+  is empty), so it runs after every gate phone heartbeat, in
+  `app()->terminating` (after the response; the phone never waits). Texts
+  only when: settings on with texts on; a school day (weekday in
+  `school_days`, not marked no-school, and no published
+  `holiday`/`eid`/`suspension` in `academic_calendar_events` covering the
+  date - PH typhoon suspensions count); past the cutoff but within
+  `GIVE_UP_HOURS` (3) - later is dropped, not sent late; and **every gate
+  phone seen today is online, has reported since the cutoff, and has 0
+  uploads waiting** (`readiness`, from `gate_devices`) - so a scan still on
+  a phone can't turn into a false "hindi pa pumapasok". Who: active
+  students with an **active RFID card** and **no gate event of any kind**
+  that day (a face-failed scan means they were there). Alert row first,
+  then the in-app/Messenger push + SMS (`texted` / `no_parent` /
+  `no_phone` / `sms_off`); at most 100 per run, the rest next heartbeat.
+- **Web Gate Students**: "No record" tab renamed **Not arrived**; a banner
+  above the tabs says the cutoff, the count, and the state (before cutoff /
+  texted N at 9:05 / on hold + why / no school + why / off / gave up) with
+  **Mark as no school** / Undo (`admin_gate_no_school_day`; hidden on
+  days that are already no school); each student gets a "Parent texted
+  9:05" or "Not texted: no card / no parent account / no parent number /
+  was at the gate / SMS is off" chip, also after they arrive late.
+  `admin_gate_student_overview` carries `absence` (from
+  `GateAbsenceService::status`) and each student's `absence`.
+- Verified: `php -l`; 31 checks against SQLite with real Eloquent
+  (`laraveltest/absence_test.php`: every hold-back rule, one text per day,
+  concurrent row, SMS off, give-up, calendar suspension incl. multi-day,
+  draft holiday ignored, no-school mark, web states); the SQL on MariaDB
+  (run twice); the page in headless Chromium in every banner state. Not
+  run in the full Laravel app, with a real queue, or a real SMS provider.
+- Known limits: one cutoff per school (no per-section/afternoon shift);
+  a face-failed scan still waiting on a phone isn't in `pending_uploads`
+  (only attendance is), so that student could be texted; nothing is
+  written to class attendance as absent - teachers still decide that.
 
 ### Gate SMS notifications for parents (Laravel - not in this repo)
 

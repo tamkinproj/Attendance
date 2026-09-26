@@ -33,13 +33,17 @@ data class ParentSmsUiState(
     val outTemplate: String = "",
     /** The Coming In text for a late scan; null when the server has no late messages yet. */
     val lateTemplate: String? = null,
+    /** The "not arrived" text (sent at the Gate Schedule's cutoff); null when the server doesn't have it yet. */
+    val absentTemplate: String? = null,
     /** What the server has now - Save is only offered when the text differs. */
     val savedIn: String = "",
     val savedOut: String = "",
     val savedLate: String? = null,
+    val savedAbsent: String? = null,
     val defaultIn: String = SmsTemplate.DEFAULT_IN,
     val defaultOut: String = SmsTemplate.DEFAULT_OUT,
     val defaultLate: String = SmsTemplate.DEFAULT_LATE,
+    val defaultAbsent: String = SmsTemplate.DEFAULT_ABSENT,
     val maxLength: Int = 320,
     val schoolName: String? = null,
     /** The platform's SMS switch (superadmin, web). Null until loaded. */
@@ -53,7 +57,8 @@ data class ParentSmsUiState(
     val stats: ParentNumberStats = ParentNumberStats(0, 0, 0, 0),
 ) {
     val changed: Boolean
-        get() = inTemplate.trim() != savedIn || outTemplate.trim() != savedOut || lateTemplate?.trim() != savedLate
+        get() = inTemplate.trim() != savedIn || outTemplate.trim() != savedOut || lateTemplate?.trim() != savedLate ||
+            absentTemplate?.trim() != savedAbsent
 }
 
 /**
@@ -91,16 +96,25 @@ class ParentSmsViewModel @Inject constructor(
 
     fun onLateChange(text: String) = _uiState.update { it.copy(lateTemplate = text.take(it.maxLength), savedNotice = null, saveError = null) }
 
+    fun onAbsentChange(text: String) = _uiState.update { it.copy(absentTemplate = text.take(it.maxLength), savedNotice = null, saveError = null) }
+
     fun resetIn() = onInChange(_uiState.value.defaultIn)
 
     fun resetOut() = onOutChange(_uiState.value.defaultOut)
 
     fun resetLate() = onLateChange(_uiState.value.defaultLate)
 
+    fun resetAbsent() = onAbsentChange(_uiState.value.defaultAbsent)
+
     fun save() {
         val state = _uiState.value
         if (state.saving || !state.changed) return
-        val problem = listOfNotNull("Coming In" to state.inTemplate, "Going Out" to state.outTemplate, state.lateTemplate?.let { "Late" to it })
+        val problem = listOfNotNull(
+            "Coming In" to state.inTemplate,
+            "Going Out" to state.outTemplate,
+            state.lateTemplate?.let { "Late" to it },
+            state.absentTemplate?.let { "Not arrived" to it },
+        )
             .firstNotNullOfOrNull { (label, text) -> validate(label, text) }
         if (problem != null) {
             _uiState.update { it.copy(saveError = problem) }
@@ -110,14 +124,14 @@ class ParentSmsViewModel @Inject constructor(
             _uiState.update { it.copy(saving = true, saveError = null, savedNotice = null) }
             val result = call {
                 apiService.adminGateSmsTemplatesUpdate(
-                    GateSmsTemplatesUpdateRequest(state.inTemplate.trim(), state.outTemplate.trim(), state.lateTemplate?.trim()),
+                    GateSmsTemplatesUpdateRequest(state.inTemplate.trim(), state.outTemplate.trim(), state.lateTemplate?.trim(), state.absentTemplate?.trim()),
                 )
             }
             result.fold(
                 onSuccess = { data ->
                     auditLogger.log(
                         action = AuditLogger.ACTION_PARENT_SMS_MESSAGES_SET,
-                        details = "in=\"${data.inTemplate}\", out=\"${data.outTemplate}\", late=\"${data.lateTemplate}\"",
+                        details = "in=\"${data.inTemplate}\", out=\"${data.outTemplate}\", late=\"${data.lateTemplate}\", absent=\"${data.absentTemplate}\"",
                     )
                     _uiState.update { withData(it, data).copy(saving = false, savedNotice = "Saved - the next scans use these messages.") }
                 },
@@ -140,6 +154,7 @@ class ParentSmsViewModel @Inject constructor(
         val inText = data.inTemplate ?: defaultIn
         val outText = data.outTemplate ?: defaultOut
         val lateText = data.lateTemplate ?: data.defaultLate
+        val absentText = data.absentTemplate ?: data.defaultAbsent
         return state.copy(
             loadError = null,
             inTemplate = inText,
@@ -148,9 +163,12 @@ class ParentSmsViewModel @Inject constructor(
             savedIn = inText,
             savedOut = outText,
             savedLate = lateText,
+            absentTemplate = absentText,
+            savedAbsent = absentText,
             defaultIn = defaultIn,
             defaultOut = defaultOut,
             defaultLate = data.defaultLate ?: SmsTemplate.DEFAULT_LATE,
+            defaultAbsent = data.defaultAbsent ?: SmsTemplate.DEFAULT_ABSENT,
             maxLength = data.maxLength ?: state.maxLength,
             schoolName = data.schoolName,
             smsEnabled = data.smsEnabled,

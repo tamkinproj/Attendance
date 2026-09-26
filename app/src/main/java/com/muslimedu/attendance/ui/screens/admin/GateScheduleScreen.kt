@@ -3,7 +3,9 @@ package com.muslimedu.attendance.ui.screens.admin
 import android.app.TimePickerDialog
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -18,23 +21,29 @@ import androidx.compose.material.icons.filled.AlarmOn
 import androidx.compose.material.icons.filled.Login
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -45,11 +54,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.muslimedu.attendance.data.repository.GateSchedule
+import com.muslimedu.attendance.data.repository.GateScheduleConfig
 import com.muslimedu.attendance.ui.theme.AccentBlue
 import com.muslimedu.attendance.ui.theme.AccentGold
 import com.muslimedu.attendance.ui.theme.AccentRed
 import com.muslimedu.attendance.ui.theme.BrandPrimary
+import com.muslimedu.attendance.viewmodel.AbsenceSettings
+import com.muslimedu.attendance.viewmodel.AbsenceSettingsState
 import com.muslimedu.attendance.viewmodel.GateScheduleViewModel
+import kotlinx.coroutines.launch
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -69,6 +82,10 @@ private const val OFF = -1
  *
  * Each Coming In also has a "Late after" time (or none): a Coming In scanned
  * after it is recorded as Late.
+ *
+ * Below, the school's "not arrived" alert (kept on the school server, which
+ * sends those texts): the time after which students with no scan are listed
+ * on the web and, if chosen, their parents texted, and the school days.
  */
 @Composable
 fun GateScheduleScreen(onSaved: () -> Unit, viewModel: GateScheduleViewModel = hiltViewModel()) {
@@ -81,6 +98,32 @@ fun GateScheduleScreen(onSaved: () -> Unit, viewModel: GateScheduleViewModel = h
     var outMinutes by rememberSaveable { mutableStateOf(initialMinutes(saved?.outTimes, perDay, isIn = false)) }
     var lateMinutes by rememberSaveable { mutableStateOf(initialLate(saved?.takeIf { it.perDay == perDay }?.lateAfter, inMinutes, outMinutes)) }
     var error by remember { mutableStateOf<String?>(null) }
+
+    // The not-arrived alert: loaded from the server, edited here, saved with the schedule.
+    val absence by viewModel.absence.collectAsState()
+    var absLoaded by rememberSaveable { mutableStateOf(false) }
+    var absEnabled by rememberSaveable { mutableStateOf(false) }
+    var absCutoff by rememberSaveable { mutableIntStateOf(OFF) }
+    var absTexts by rememberSaveable { mutableStateOf(true) }
+    var absDays by rememberSaveable { mutableStateOf(listOf(1, 2, 3, 4, 5)) }
+    var saving by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { viewModel.loadAbsence() }
+    LaunchedEffect(absence) {
+        val loaded = (absence as? AbsenceSettingsState.Loaded)?.settings ?: return@LaunchedEffect
+        if (absLoaded) return@LaunchedEffect
+        absLoaded = true
+        absEnabled = loaded.enabled
+        absCutoff = loaded.cutoff?.let { it.hour * 60 + it.minute } ?: OFF
+        absTexts = if (loaded.enabled) loaded.textParents else true
+        absDays = loaded.schoolDays.sorted()
+    }
+    fun currentConfig() = GateScheduleConfig(
+        perDay,
+        inMinutes.map(::toTime),
+        outMinutes.map(::toTime),
+        lateMinutes.map { if (it == OFF) null else toTime(it) },
+    )
 
     fun choose(count: Int) {
         perDay = count
@@ -192,19 +235,62 @@ fun GateScheduleScreen(onSaved: () -> Unit, viewModel: GateScheduleViewModel = h
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            AbsenceCard(
+                state = absence,
+                enabled = absEnabled,
+                cutoffMinutes = absCutoff,
+                textParents = absTexts,
+                schoolDays = absDays,
+                onEnable = { on ->
+                    absEnabled = on
+                    if (on && absCutoff == OFF) {
+                        val config = currentConfig()
+                        absCutoff = GateSchedule.defaultAbsenceCutoff(config.inTimes, config.outTimes, config.lateAfter).let { it.hour * 60 + it.minute }
+                    }
+                    error = null
+                },
+                onPickCutoff = { pickTime(absCutoff.takeIf { it != OFF } ?: 9 * 60) { picked -> absCutoff = picked; error = null } },
+                onTextParents = { absTexts = it; error = null },
+                onToggleDay = { day -> absDays = (if (day in absDays) absDays - day else absDays + day).sorted(); error = null },
+                onRetry = viewModel::loadAbsence,
+            )
+
             error?.let { Text(it, color = AccentRed, style = MaterialTheme.typography.bodyMedium) }
             Button(
                 onClick = {
-                    val problem = viewModel.save(
-                        perDay,
-                        inMinutes.map(::toTime),
-                        outMinutes.map(::toTime),
-                        lateMinutes.map { if (it == OFF) null else toTime(it) },
-                    )
-                    if (problem == null) onSaved() else error = problem
+                    val config = currentConfig()
+                    val alert = if (absence is AbsenceSettingsState.Loaded) {
+                        AbsenceSettings(absEnabled, absCutoff.takeIf { it != OFF }?.let(::toTime), absTexts, absDays.toSet())
+                    } else {
+                        null
+                    }
+                    // The alert is checked against the new schedule before anything is saved.
+                    val alertProblem = alert?.takeIf { it.enabled }?.let { a ->
+                        a.cutoff?.let { GateSchedule.absenceCutoffProblem(it, config.inTimes, config.outTimes, config.lateAfter) }
+                            ?: if (a.schoolDays.isEmpty()) "Choose at least one school day for the not-arrived alert." else null
+                    }
+                    val problem = alertProblem ?: viewModel.save(perDay, config.inTimes, config.outTimes, config.lateAfter)
+                    when {
+                        problem != null -> error = problem
+                        alert == null -> onSaved()
+                        else -> scope.launch {
+                            saving = true
+                            val alertError = viewModel.saveAbsence(alert, config)
+                            saving = false
+                            // The schedule itself is saved on the phone either way.
+                            if (alertError == null) onSaved() else error = "Gate schedule saved. $alertError"
+                        }
+                    }
                 },
+                enabled = !saving,
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            ) { Text(if (saved == null) "Save and open the gate" else "Save") }
+            ) {
+                if (saving) {
+                    CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                } else {
+                    Text(if (saved == null) "Save and open the gate" else "Save")
+                }
+            }
         }
     }
 }
@@ -227,6 +313,108 @@ private fun initialLate(saved: List<LocalTime?>?, inMinutes: List<Int>, outMinut
 private fun defaultLateMinutes(index: Int, inMinute: Int, outMinute: Int): Int {
     val candidate = inMinute + if (index == 0) 90 else 30
     return if (candidate < outMinute && candidate < 24 * 60) candidate else inMinute
+}
+
+private val WEEKDAYS = listOf(1 to "M", 2 to "T", 3 to "W", 4 to "T", 5 to "F", 6 to "S", 7 to "S")
+private val WEEKDAY_NAMES = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+/**
+ * The "not arrived" alert: after the time, students with a card and no scan
+ * are listed on the web (Gate Students > Not arrived), and with "Text
+ * parents" each parent gets one text - only once every gate phone has
+ * uploaded its scans, never on a holiday, suspension or non-school day.
+ */
+@Composable
+private fun AbsenceCard(
+    state: AbsenceSettingsState,
+    enabled: Boolean,
+    cutoffMinutes: Int,
+    textParents: Boolean,
+    schoolDays: List<Int>,
+    onEnable: (Boolean) -> Unit,
+    onPickCutoff: () -> Unit,
+    onTextParents: (Boolean) -> Unit,
+    onToggleDay: (Int) -> Unit,
+    onRetry: () -> Unit,
+) {
+    Text("Not arrived alert", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            when (state) {
+                AbsenceSettingsState.Loading -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                    Text("Loading from the school server...", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 12.dp))
+                }
+                is AbsenceSettingsState.Unavailable -> {
+                    Text(state.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(onClick = onRetry, contentPadding = PaddingValues(0.dp)) { Text("Try again") }
+                }
+                is AbsenceSettingsState.Loaded -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Schedule, contentDescription = null, tint = if (enabled) AccentRed else MaterialTheme.colorScheme.outline, modifier = Modifier.size(20.dp))
+                        Text(
+                            if (enabled) "Not arrived by" else "Off",
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.padding(start = 12.dp).weight(1f),
+                        )
+                        if (enabled && cutoffMinutes != OFF) {
+                            TextButton(onClick = onPickCutoff) {
+                                Text(toTime(cutoffMinutes).format(DISPLAY_TIME), fontWeight = FontWeight.SemiBold, color = AccentRed)
+                            }
+                        }
+                        Switch(checked = enabled, onCheckedChange = onEnable, modifier = Modifier.padding(start = 4.dp))
+                    }
+                    if (enabled) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                            Icon(Icons.Filled.Sms, contentDescription = null, tint = if (textParents) BrandPrimary else MaterialTheme.colorScheme.outline, modifier = Modifier.size(20.dp))
+                            Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
+                                Text("Text parents", style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    "One text per student that day, e.g. \"...ay hindi pa pumapasok...\" (wording in Parent SMS).",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(checked = textParents, onCheckedChange = onTextParents, modifier = Modifier.padding(start = 4.dp))
+                        }
+                        Text("School days", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 12.dp, bottom = 6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            WEEKDAYS.forEach { (day, letter) ->
+                                val on = day in schoolDays
+                                Surface(
+                                    onClick = { onToggleDay(day) },
+                                    shape = CircleShape,
+                                    color = if (on) BrandPrimary else MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier.size(36.dp),
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            letter,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (on) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        Text(
+                            schoolDays.sorted().joinToString(", ") { WEEKDAY_NAMES[it - 1] }.ifEmpty { "No school days chosen" },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+    Text(
+        "After this time, students with a card who haven't scanned are listed on the web (Gate Students > Not arrived). " +
+            "Texts go out only once every gate phone is online and has uploaded its scans, never on holidays or class " +
+            "suspensions in the school calendar, and at most once per student a day.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 /** "Late after 7:30 AM" under a Coming In, with a switch; off = that Coming In is never late. */

@@ -3,7 +3,9 @@ package com.muslimedu.attendance.data.repository
 import com.muslimedu.attendance.data.db.entities.GateScanEntity
 import java.time.Duration
 import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import java.util.Locale
 
 /**
  * The admin's gate schedule: [perDay] Coming In and [perDay] Going Out scans
@@ -129,4 +131,35 @@ object GateSchedule {
     fun lateAfterValid(inTimes: List<LocalTime>, outTimes: List<LocalTime>, lateAfter: List<LocalTime?>): Boolean =
         lateAfter.size == inTimes.size &&
             lateAfter.indices.all { i -> lateAfter[i]?.let { it >= inTimes[i] && it < outTimes[i] } ?: true }
+
+    /**
+     * Where the "not arrived" cutoff starts: an hour after the first Coming
+     * In's late time (7:30 -> 8:30), else three hours after it opens
+     * (6:00 -> 9:00) - always before the first Going Out.
+     */
+    fun defaultAbsenceCutoff(inTimes: List<LocalTime>, outTimes: List<LocalTime>, lateAfter: List<LocalTime?>): LocalTime {
+        val first = inTimes.first()
+        val out = outTimes.first()
+        val candidate = lateAfter.firstOrNull()?.plusMinutes(60) ?: first.plusHours(3)
+        return if (candidate > first && candidate < out) candidate else first.plusMinutes(first.until(out, ChronoUnit.MINUTES) / 2)
+    }
+
+    /**
+     * Why [cutoff] doesn't fit the schedule, or null: it must be after the
+     * first Coming In opens (and after its late time, if any - until then a
+     * student isn't even late) and before the first Going Out.
+     */
+    fun absenceCutoffProblem(cutoff: LocalTime, inTimes: List<LocalTime>, outTimes: List<LocalTime>, lateAfter: List<LocalTime?>): String? {
+        val first = inTimes.first()
+        val late = lateAfter.firstOrNull()
+        val out = outTimes.first()
+        return when {
+            cutoff <= first -> "The not-arrived time must be after Coming In 1 opens (${first.format(H_MM_A)})."
+            late != null && cutoff <= late -> "The not-arrived time must be after Late after (${late.format(H_MM_A)}) - until then a student isn't even late."
+            cutoff >= out -> "The not-arrived time must be before Going Out 1 opens (${out.format(H_MM_A)})."
+            else -> null
+        }
+    }
+
+    private val H_MM_A: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
 }

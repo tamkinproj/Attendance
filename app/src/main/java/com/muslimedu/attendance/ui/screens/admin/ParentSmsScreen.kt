@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Login
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AssistChip
@@ -143,6 +144,20 @@ fun ParentSmsScreen(viewModel: ParentSmsViewModel = hiltViewModel()) {
                             onReset = viewModel::resetLate,
                             note = "Sent instead of the Coming In text when the scan is after its \"Late after\" time (Admin > Gate Schedule).",
                             extraPlaceholders = listOf(LATE_PLACEHOLDER),
+                        )
+                    }
+                    state.absentTemplate?.let { absentText ->
+                        MessageEditor(
+                            title = "Not arrived",
+                            icon = Icons.Filled.Schedule,
+                            color = AccentRed,
+                            text = absentText,
+                            isDefault = absentText.trim() == state.defaultAbsent,
+                            maxLength = state.maxLength,
+                            preview = SmsTemplate.render(absentText, state.sampleName, state.sampleCode, "09:00", today(), state.schoolName),
+                            onChange = viewModel::onAbsentChange,
+                            onReset = viewModel::resetAbsent,
+                            note = "Sent at the not-arrived time (Admin > Gate Schedule) to parents of students who haven't scanned. {time} is that time.",
                         )
                     }
                     state.saveError?.let {

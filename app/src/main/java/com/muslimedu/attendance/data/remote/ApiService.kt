@@ -7,6 +7,9 @@ import com.muslimedu.attendance.data.remote.dto.AdminSectionStudentsRequest
 import com.muslimedu.attendance.data.remote.dto.AdminSectionsListData
 import com.muslimedu.attendance.data.remote.dto.AdminSectionsListRequest
 import com.muslimedu.attendance.data.remote.dto.ApiEnvelope
+import com.muslimedu.attendance.data.remote.dto.GateAbsenceSettingsData
+import com.muslimedu.attendance.data.remote.dto.GateAbsenceSettingsRequest
+import com.muslimedu.attendance.data.remote.dto.GateAbsenceSettingsUpdateRequest
 import com.muslimedu.attendance.data.remote.dto.AttendanceScanData
 import com.muslimedu.attendance.data.remote.dto.AttendanceScanRequest
 import com.muslimedu.attendance.data.remote.dto.AttendanceSubmitData
@@ -133,6 +136,13 @@ interface ApiService {
 
     @POST("admin_gate_sms_templates_update")
     suspend fun adminGateSmsTemplatesUpdate(@Body request: GateSmsTemplatesUpdateRequest): ApiEnvelope<GateSmsTemplatesData>
+
+    /** The school's "not arrived" alert. See [GateAbsenceSettingsUpdateRequest]. */
+    @POST("admin_gate_absence_settings")
+    suspend fun adminGateAbsenceSettings(@Body request: GateAbsenceSettingsRequest): ApiEnvelope<GateAbsenceSettingsData>
+
+    @POST("admin_gate_absence_settings_update")
+    suspend fun adminGateAbsenceSettingsUpdate(@Body request: GateAbsenceSettingsUpdateRequest): ApiEnvelope<GateAbsenceSettingsData>
 
     /** This gate phone's health for the web's Gate Devices page. See [GateDeviceHeartbeatRequest]. */
     @POST("admin_gate_device_heartbeat")
