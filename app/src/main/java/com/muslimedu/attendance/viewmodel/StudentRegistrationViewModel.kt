@@ -44,17 +44,20 @@ data class RegisteredPhone(val phone: String?, val changed: Boolean, val serverN
 sealed class RegistrationUiState {
     data object SelectingStudent : RegistrationUiState()
 
-    /** Waiting for the card. [error] is why the last card was refused - it keeps listening for another. */
+    /**
+     * Waiting for the card. [error] is why the last card was refused - it
+     * keeps listening for another. A student who already has a card keeps
+     * it by itself after [StudentRegistrationViewModel.KEEP_MILLIS] unless a
+     * new card is tapped, which replaces it.
+     */
     data class TapCard(val student: StudentEntity, val error: String? = null) : RegistrationUiState()
 
-    /** The student already has [oldUid]; registering [newUid] deactivates it. */
-    data class ConfirmReplace(val student: StudentEntity, val newUid: String, val oldUid: String) : RegistrationUiState()
-
     /**
-     * The card is saved; now the face. [capturing] shows the camera. Otherwise
-     * the admin sees [error] (a refused capture) or, when the student
-     * [hasFace] already, the keep / re-enroll choice. [attempt] gives each
-     * capture a fresh camera - the capture view fires once.
+     * The card is saved; now the face. [capturing]: the full-screen camera,
+     * which retries by itself ([attempt] re-arms it, [hint] says why the last
+     * try didn't take). Otherwise [error] (a face that belongs to another
+     * student - retrying can't fix that) or, when the student [hasFace]
+     * already, "keeping it" with a re-enroll option.
      */
     data class Face(
         val student: StudentEntity,
@@ -64,6 +67,7 @@ sealed class RegistrationUiState {
         val saving: Boolean = false,
         val error: String? = null,
         val attempt: Int = 0,
+        val hint: String? = null,
     ) : RegistrationUiState()
 
     /**
@@ -165,7 +169,9 @@ class StudentRegistrationViewModel @Inject constructor(
         when {
             target == null -> reset()
             target.start == RegistrationStart.PHONE -> viewModelScope.launch { openPhoneStep(target.student) }
-            target.start == RegistrationStart.FACE && target.student.rfidCardNumber != null -> viewModelScope.launch { keepCard(target.student) }
+            // From the Students list's face icon: the admin came to (re-)enroll the face, so the camera opens at once.
+            target.start == RegistrationStart.FACE && target.student.rfidCardNumber != null ->
+                viewModelScope.launch { keepCard(target.student, forceCapture = true) }
             else -> selectStudent(target.student)
         }
     }
@@ -186,16 +192,6 @@ class StudentRegistrationViewModel @Inject constructor(
         viewModelScope.launch { keepCard(state.student) }
     }
 
-    fun confirmReplace() {
-        val state = _uiState.value as? RegistrationUiState.ConfirmReplace ?: return
-        viewModelScope.launch { assignCard(state.student, state.newUid, replace = true) }
-    }
-
-    fun cancelReplace() {
-        val state = _uiState.value as? RegistrationUiState.ConfirmReplace ?: return
-        listenForCard(state.student, error = null)
-    }
-
     fun onFaceCaptured(bitmap: Bitmap) {
         val state = _uiState.value as? RegistrationUiState.Face ?: return
         if (!state.capturing || state.saving) return
@@ -212,14 +208,15 @@ class StudentRegistrationViewModel @Inject constructor(
             val current = _uiState.value as? RegistrationUiState.Face ?: return@launch
             if (current.student.id != student.id) return@launch
             val refused = { reason: String -> current.copy(capturing = false, saving = false, error = reason) }
+            // Not good enough yet: the same camera tries again by itself.
+            val retry = { hint: String -> current.copy(capturing = true, saving = false, attempt = current.attempt + 1, hint = hint) }
             _uiState.value = when (result) {
                 is FaceEnrollResult.Success -> {
                     refreshCandidates()
                     phoneStep(student, current.card, faceEnrolled = true)
                 }
-                is FaceEnrollResult.NoFaceDetected -> refused("No face detected. Look straight at the camera and try again.")
-                is FaceEnrollResult.LivenessTooLow ->
-                    refused("Liveness check failed (score %.2f). Try again in better lighting.".format(result.score))
+                is FaceEnrollResult.NoFaceDetected -> retry("No face found - look straight at the camera")
+                is FaceEnrollResult.LivenessTooLow -> retry("Hold still in good light - trying again")
                 is FaceEnrollResult.AlreadyEnrolled -> {
                     val other = studentRepository.find(student.schoolId, result.studentId)
                     val who = other?.let { "${it.name} (${it.code})" } ?: "another student"
@@ -233,7 +230,7 @@ class StudentRegistrationViewModel @Inject constructor(
     fun captureFace() {
         val state = _uiState.value as? RegistrationUiState.Face ?: return
         if (state.saving) return
-        _uiState.value = state.copy(capturing = true, error = null, attempt = state.attempt + 1)
+        _uiState.value = state.copy(capturing = true, error = null, hint = null, attempt = state.attempt + 1)
     }
 
     /** Goes on without a new face: keeps the enrolled one, or leaves the student without one for now. */
@@ -304,8 +301,9 @@ class StudentRegistrationViewModel @Inject constructor(
     private suspend fun assignCard(student: StudentEntity, rawUid: String, replace: Boolean) {
         val uid = normalizeRfidUid(rawUid)
         when (val result = studentRepository.assignRfidCard(student, uid, replace)) {
-            is CardAssignResult.NeedsReplace ->
-                _uiState.value = RegistrationUiState.ConfirmReplace(student, uid, result.currentUid)
+            // Tapping a different card in this step is the admin's answer:
+            // it replaces the old one (deactivated, shown on the summary).
+            is CardAssignResult.NeedsReplace -> assignCard(student, uid, replace = true)
             is CardAssignResult.OwnedByOther -> listenForCard(
                 student,
                 error = "Card $uid is registered to ${result.owner.name} (${result.owner.code}). " +
@@ -326,15 +324,15 @@ class StudentRegistrationViewModel @Inject constructor(
         }
     }
 
-    private suspend fun keepCard(student: StudentEntity) {
+    private suspend fun keepCard(student: StudentEntity, forceCapture: Boolean = false) {
         val current = studentRepository.reload(student) ?: student
         val uid = current.rfidCardNumber ?: return listenForCard(current, error = null)
-        startFaceStep(current, RegisteredCard(uid, replacedUid = null, kept = true, serverNote = describeCardSync(current, null)))
+        startFaceStep(current, RegisteredCard(uid, replacedUid = null, kept = true, serverNote = describeCardSync(current, null)), forceCapture)
     }
 
-    private suspend fun startFaceStep(student: StudentEntity, card: RegisteredCard) {
+    private suspend fun startFaceStep(student: StudentEntity, card: RegisteredCard, forceCapture: Boolean = false) {
         val hasFace = faceTemplateRepository.hasTemplate(student.schoolId, student.studentId)
-        _uiState.value = RegistrationUiState.Face(student, card, hasFace = hasFace, capturing = !hasFace)
+        _uiState.value = RegistrationUiState.Face(student, card, hasFace = hasFace, capturing = !hasFace || forceCapture)
     }
 
     /** Re-read so the step shows the number a download or an earlier visit left. */
@@ -407,5 +405,16 @@ class StudentRegistrationViewModel @Inject constructor(
 
     override fun onCleared() {
         leave()
+    }
+
+    companion object {
+        /** How long a step that already has what it needs (card, face, number) waits before keeping it. */
+        const val KEEP_MILLIS = 6_000L
+
+        /** How long the Done page shows before the next student. */
+        const val DONE_MILLIS = 5_000L
+
+        /** After the last digit of a valid number, before it saves by itself. */
+        const val PHONE_SAVE_DELAY_MILLIS = 1_200L
     }
 }

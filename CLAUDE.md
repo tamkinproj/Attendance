@@ -182,7 +182,24 @@ this device), the same pieces the old gate screen used.
   no.** -> **5 Done** (one summary card with card, face and number, then
   "Register next student" / "Finish"). The step bar (`StepIndicator`) is
   numbered circles with labels under them - five steps didn't fit the old
-  one-line label on a phone. `StudentRegistrationScreen` +
+  one-line label on a phone. **Each step is its own full page** (the user
+  asked not to have card + wizard stacked on one page): the wizard draws
+  its own header (back, "Register Student", "Step 2 of 5 · Card", the step
+  circles; `AppRoot` counts it as owning its chrome), pages slide in with
+  `AnimatedContent`, each shows a student chip and a big icon, and **every
+  step moves on by itself** (the user asked for no buttons): a card read
+  goes straight to the face and a new card replaces the old one without a
+  confirm; the face is captured on the **gate's full-screen camera**
+  (`LiveFaceCaptureView(fullScreen = true)` + `FaceScanOverlay`, only an X
+  to skip) and a capture that doesn't take retries itself on the same
+  camera; a complete valid number saves itself after
+  `PHONE_SAVE_DELAY_MILLIS`; Done moves on after `DONE_MILLIS`. What a
+  student already has (card, face, number) is kept after a `KEEP_MILLIS`
+  countdown bar, with an optional "Keep it now" / "Re-enroll" link. The
+  only real choice left is a face that's already another student's (Try
+  again / Skip). The number page previews the text the parent will get.
+  The old framed (non-full-screen) camera showed a black half on the
+  user's phone - the wizard no longer uses it. `StudentRegistrationScreen` +
   `StudentRegistrationViewModel`; the old `RfidEnrollmentScreen` /
   `FaceEnrollmentScreen` and their view models were removed.
   - Card: attaches a physically read card to an existing student - never

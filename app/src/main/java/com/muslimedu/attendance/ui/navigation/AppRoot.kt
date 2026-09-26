@@ -166,9 +166,10 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
     val shown = if (screen.requiresUnlock && !adminUnlocked) Screen.AdminPin else screen
 
     // These draw their own header: the dashboard has its large title and
-    // admin button, and the RFID scan screens handle back themselves (they
-    // ask before leaving with unsynced attendance).
-    val ownsChrome = shown == Screen.Gate || shown == Screen.GateIn || shown == Screen.GateOut
+    // admin button, the RFID scan screens handle back themselves (they ask
+    // before leaving with unsynced attendance), and the Register wizard's
+    // face step takes the whole screen.
+    val ownsChrome = shown == Screen.Gate || shown == Screen.GateIn || shown == Screen.GateOut || shown == Screen.Register
 
     BackHandler(enabled = !ownsChrome) { navigate(parentOf(shown)) }
 
@@ -257,6 +258,7 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
                     target = registerTarget,
                     requestId = registerRequestId,
                     onFinish = { navigate(parentOf(Screen.Register)) },
+                    onBack = { navigate(parentOf(Screen.Register)) },
                 )
                 Screen.GateSchedule -> GateScheduleScreen(onSaved = { navigate(parentOf(Screen.GateSchedule)) })
                 Screen.FaceSettings -> SettingsScreen()
