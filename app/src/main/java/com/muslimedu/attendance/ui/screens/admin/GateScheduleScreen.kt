@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AlarmOn
 import androidx.compose.material.icons.filled.Login
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Remove
@@ -25,6 +26,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -44,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.muslimedu.attendance.data.repository.GateSchedule
 import com.muslimedu.attendance.ui.theme.AccentBlue
+import com.muslimedu.attendance.ui.theme.AccentGold
 import com.muslimedu.attendance.ui.theme.AccentRed
 import com.muslimedu.attendance.ui.theme.BrandPrimary
 import com.muslimedu.attendance.viewmodel.GateScheduleViewModel
@@ -55,11 +58,17 @@ private const val MORNING_ONLY = 1
 private const val WHOLE_DAY = 2
 private val DISPLAY_TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
 
+/** No late check for that Coming In, in the saveable minutes list. */
+private const val OFF = -1
+
 /**
  * Set before the gate can be used: how many times each student comes in
  * and goes out per day, and when each Coming In / Going Out opens. Before
  * its time a direction stays locked on the gate dashboard and a student's
  * scan for it is refused; it opens by itself at that time.
+ *
+ * Each Coming In also has a "Late after" time (or none): a Coming In scanned
+ * after it is recorded as Late.
  */
 @Composable
 fun GateScheduleScreen(onSaved: () -> Unit, viewModel: GateScheduleViewModel = hiltViewModel()) {
@@ -70,6 +79,7 @@ fun GateScheduleScreen(onSaved: () -> Unit, viewModel: GateScheduleViewModel = h
     // Times are stored as minutes of the day so they survive recreation.
     var inMinutes by rememberSaveable { mutableStateOf(initialMinutes(saved?.inTimes, perDay, isIn = true)) }
     var outMinutes by rememberSaveable { mutableStateOf(initialMinutes(saved?.outTimes, perDay, isIn = false)) }
+    var lateMinutes by rememberSaveable { mutableStateOf(initialLate(saved?.takeIf { it.perDay == perDay }?.lateAfter, inMinutes, outMinutes)) }
     var error by remember { mutableStateOf<String?>(null) }
 
     fun choose(count: Int) {
@@ -77,6 +87,7 @@ fun GateScheduleScreen(onSaved: () -> Unit, viewModel: GateScheduleViewModel = h
         val keep = saved?.takeIf { it.perDay == count }
         inMinutes = initialMinutes(keep?.inTimes, count, isIn = true)
         outMinutes = initialMinutes(keep?.outTimes, count, isIn = false)
+        lateMinutes = initialLate(keep?.lateAfter, inMinutes, outMinutes)
         error = null
     }
 
@@ -149,6 +160,18 @@ fun GateScheduleScreen(onSaved: () -> Unit, viewModel: GateScheduleViewModel = h
                         TimeRow(Icons.Filled.Login, BrandPrimary, "Coming In ${i + 1}", inMinutes.getOrElse(i) { 0 }) {
                             pickTime(inMinutes[i]) { picked -> inMinutes = inMinutes.toMutableList().also { it[i] = picked }; error = null }
                         }
+                        val late = lateMinutes.getOrElse(i) { OFF }
+                        LateRow(
+                            minutes = late,
+                            onToggle = { on ->
+                                val start = defaultLateMinutes(i, inMinutes[i], outMinutes[i])
+                                lateMinutes = lateMinutes.toMutableList().also { it[i] = if (on) start else OFF }
+                                error = null
+                            },
+                            onPick = {
+                                pickTime(late) { picked -> lateMinutes = lateMinutes.toMutableList().also { it[i] = picked }; error = null }
+                            },
+                        )
                         TimeRow(Icons.Filled.Logout, AccentBlue, "Going Out ${i + 1}", outMinutes.getOrElse(i) { 0 }) {
                             pickTime(outMinutes[i]) { picked -> outMinutes = outMinutes.toMutableList().also { it[i] = picked }; error = null }
                         }
@@ -156,6 +179,12 @@ fun GateScheduleScreen(onSaved: () -> Unit, viewModel: GateScheduleViewModel = h
                 }
             }
 
+            Text(
+                "Late after: a Coming In scanned after this time is recorded as Late - the gate, the history, the web " +
+                    "and the parent's text say so. Switch it off for a Coming In that is never late.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Text(
                 "At the gate, scans take turns: Coming In, then Going Out. A student who scans the same way twice, " +
                     "or more than $perDay time(s) each way in a day, is not recorded again. Going Out still works if they " +
@@ -166,8 +195,13 @@ fun GateScheduleScreen(onSaved: () -> Unit, viewModel: GateScheduleViewModel = h
             error?.let { Text(it, color = AccentRed, style = MaterialTheme.typography.bodyMedium) }
             Button(
                 onClick = {
-                    val ok = viewModel.save(perDay, inMinutes.map(::toTime), outMinutes.map(::toTime))
-                    if (ok) onSaved() else error = "Each time must be later than the one before it (Coming In 1, Going Out 1, Coming In 2...)."
+                    val problem = viewModel.save(
+                        perDay,
+                        inMinutes.map(::toTime),
+                        outMinutes.map(::toTime),
+                        lateMinutes.map { if (it == OFF) null else toTime(it) },
+                    )
+                    if (problem == null) onSaved() else error = problem
                 },
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             ) { Text(if (saved == null) "Save and open the gate" else "Save") }
@@ -182,6 +216,38 @@ private fun initialMinutes(saved: List<LocalTime>?, perDay: Int, isIn: Boolean):
     val times = saved?.takeIf { it.size == perDay }
         ?: GateSchedule.defaultTimes(perDay).let { if (isIn) it.first else it.second }
     return times.map { it.hour * 60 + it.minute }
+}
+
+/** Saved late times when they match, the defaults for a new schedule; minutes of the day, [OFF] for none. */
+private fun initialLate(saved: List<LocalTime?>?, inMinutes: List<Int>, outMinutes: List<Int>): List<Int> =
+    saved?.takeIf { it.size == inMinutes.size }?.map { it?.let { t -> t.hour * 60 + t.minute } ?: OFF }
+        ?: GateSchedule.defaultLateAfter(inMinutes.map(::toTime), outMinutes.map(::toTime)).map { it?.let { t -> t.hour * 60 + t.minute } ?: OFF }
+
+/** Where the switch starts a late time: the default for that Coming In, or its opening time when that doesn't fit. */
+private fun defaultLateMinutes(index: Int, inMinute: Int, outMinute: Int): Int {
+    val candidate = inMinute + if (index == 0) 90 else 30
+    return if (candidate < outMinute && candidate < 24 * 60) candidate else inMinute
+}
+
+/** "Late after 7:30 AM" under a Coming In, with a switch; off = that Coming In is never late. */
+@Composable
+private fun LateRow(minutes: Int, onToggle: (Boolean) -> Unit, onPick: () -> Unit) {
+    val on = minutes != OFF
+    Row(modifier = Modifier.fillMaxWidth().padding(start = 48.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Filled.AlarmOn, contentDescription = null, tint = if (on) AccentGold else MaterialTheme.colorScheme.outline, modifier = Modifier.size(18.dp))
+        Text(
+            if (on) "Late after" else "No late check",
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 10.dp).weight(1f),
+        )
+        if (on) {
+            TextButton(onClick = onPick) {
+                Text(toTime(minutes).format(DISPLAY_TIME), fontWeight = FontWeight.SemiBold, color = AccentGold)
+            }
+        }
+        Switch(checked = on, onCheckedChange = onToggle, modifier = Modifier.padding(start = 4.dp))
+    }
 }
 
 @Composable

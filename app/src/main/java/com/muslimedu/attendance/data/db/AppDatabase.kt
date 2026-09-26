@@ -23,7 +23,7 @@ import com.muslimedu.attendance.data.db.entities.StudentEntity
         AuditLogEntity::class,
         GateScanEntity::class,
     ],
-    version = 10,
+    version = 11,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -130,6 +130,15 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE `students` ADD COLUMN `has_parent_account` INTEGER")
                 db.execSQL("ALTER TABLE `students` ADD COLUMN `phone_sync_status` TEXT NOT NULL DEFAULT 'synced'")
                 db.execSQL("ALTER TABLE `students` ADD COLUMN `phone_sync_error` TEXT")
+            }
+        }
+
+        /** The late check on Coming In scans. Scans before this weren't checked: late 0, no late time. */
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `gate_scans` ADD COLUMN `is_late` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `gate_scans` ADD COLUMN `minutes_late` INTEGER")
+                db.execSQL("ALTER TABLE `gate_scans` ADD COLUMN `late_after` TEXT")
             }
         }
     }

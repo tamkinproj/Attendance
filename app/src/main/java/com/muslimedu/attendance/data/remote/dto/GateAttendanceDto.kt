@@ -37,6 +37,14 @@ data class GateAttendanceScanRequest(
     @SerializedName("face_score") val faceScore: Float? = null,
     /** Per-record UUID: the server ignores an event id it already has, so a retried upload is never counted twice. */
     @SerializedName("device_event_id") val deviceEventId: String? = null,
+    /**
+     * The gate's late check on a Coming In, decided at scan time: null when
+     * that Coming In has no late check (or it's a Going Out), else whether it
+     * was after [lateAfter] ("HH:mm") and by how many minutes.
+     */
+    @SerializedName("late") val late: Boolean? = null,
+    @SerializedName("minutes_late") val minutesLate: Int? = null,
+    @SerializedName("late_after") val lateAfter: String? = null,
 )
 
 /**
@@ -137,6 +145,8 @@ class GateSmsTemplatesRequest
 data class GateSmsTemplatesUpdateRequest(
     @SerializedName("in_template") val inTemplate: String?,
     @SerializedName("out_template") val outTemplate: String?,
+    /** The Coming In text for a late scan. Omitted by a caller that doesn't edit it (the server keeps it). */
+    @SerializedName("late_template") val lateTemplate: String? = null,
 )
 
 /**
@@ -149,6 +159,9 @@ data class GateSmsTemplatesData(
     @SerializedName("out_template") val outTemplate: String?,
     @SerializedName("default_in") val defaultIn: String?,
     @SerializedName("default_out") val defaultOut: String?,
+    /** Null from a server without late messages - the screen then hides that message. */
+    @SerializedName("late_template") val lateTemplate: String? = null,
+    @SerializedName("default_late") val defaultLate: String? = null,
     @SerializedName("placeholders") val placeholders: List<String>?,
     @SerializedName("max_length") val maxLength: Int?,
     @SerializedName("school_name") val schoolName: String?,

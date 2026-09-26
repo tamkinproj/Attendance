@@ -66,6 +66,7 @@ class DeviceSettings @Inject constructor(
             .putInt(KEY_GATE_SCANS_PER_DAY, config.perDay)
             .putString(KEY_GATE_IN_TIMES, config.inTimes.joinToString(",") { it.format(HH_MM) })
             .putString(KEY_GATE_OUT_TIMES, config.outTimes.joinToString(",") { it.format(HH_MM) })
+            .putString(KEY_GATE_LATE_AFTER, config.lateAfter.joinToString(",") { it?.format(HH_MM) ?: NO_LATE_CHECK })
             .apply()
         _gateSchedule.value = config
     }
@@ -78,10 +79,22 @@ class DeviceSettings @Inject constructor(
         val inTimes = times(KEY_GATE_IN_TIMES)
         val outTimes = times(KEY_GATE_OUT_TIMES)
         if (inTimes != null && outTimes != null && inTimes.size == perDay && GateSchedule.timesInOrder(inTimes, outTimes)) {
-            return GateScheduleConfig(perDay, inTimes, outTimes)
+            return GateScheduleConfig(perDay, inTimes, outTimes, readLateAfter(inTimes, outTimes))
         }
         val (defaultIn, defaultOut) = GateSchedule.defaultTimes(perDay)
         return GateScheduleConfig(perDay, defaultIn, defaultOut)
+    }
+
+    /**
+     * No stored late times (a schedule saved before late checks existed) means
+     * no late check at all - never a default the admin didn't choose. One that
+     * no longer fits its Coming In is dropped the same way.
+     */
+    private fun readLateAfter(inTimes: List<LocalTime>, outTimes: List<LocalTime>): List<LocalTime?> {
+        val stored = prefs.getString(KEY_GATE_LATE_AFTER, null)?.split(',')
+            ?.map { part -> part.trim().takeIf { it != NO_LATE_CHECK }?.let { runCatching { LocalTime.parse(it, HH_MM) }.getOrNull() } }
+        if (stored == null || stored.size != inTimes.size) return List(inTimes.size) { null }
+        return stored.mapIndexed { i, time -> time?.takeIf { it >= inTimes[i] && it < outTimes[i] } }
     }
 
     var lastStudentDownloadAt: Long?
@@ -99,6 +112,8 @@ class DeviceSettings @Inject constructor(
         private const val KEY_GATE_SCANS_PER_DAY = "gate_scans_per_day"
         private const val KEY_GATE_IN_TIMES = "gate_in_times"
         private const val KEY_GATE_OUT_TIMES = "gate_out_times"
+        private const val KEY_GATE_LATE_AFTER = "gate_late_after"
+        private const val NO_LATE_CHECK = "-"
         private val HH_MM: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
     }
 }

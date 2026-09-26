@@ -461,6 +461,13 @@ private fun SuccessCard(
                 modifier = Modifier.padding(top = 10.dp),
             )
             SmallChip("${directionLabel(scan.direction)} · ${recorded.number} of ${recorded.perDay} today", accent, Modifier.padding(top = 8.dp))
+            lateLabel(scan)?.let { label ->
+                SmallChip(
+                    label + (scan.lateAfter?.let { " · after ${displayTime(it)}" } ?: ""),
+                    AccentGold,
+                    Modifier.padding(top = 6.dp),
+                )
+            }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
             Row(modifier = Modifier.fillMaxWidth()) {

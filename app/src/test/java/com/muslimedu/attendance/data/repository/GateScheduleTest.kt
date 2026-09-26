@@ -115,4 +115,53 @@ class GateScheduleTest {
         assertFalse(GateSchedule.timesInOrder(listOf(t("06:00")), listOf(t("06:00"))))
         assertTrue(GateSchedule.timesInOrder(wholeDay.inTimes, wholeDay.outTimes))
     }
+
+    private val lateWholeDay = wholeDay.copy(lateAfter = listOf(t("07:30"), t("13:00")))
+
+    @Test
+    fun `a Coming In after its late time is late by whole minutes`() {
+        assertEquals(null, GateSchedule.minutesLate(lateWholeDay, DIRECTION_IN, 1, t("07:30")))
+        assertEquals(null, GateSchedule.minutesLate(lateWholeDay, DIRECTION_IN, 1, LocalTime.of(7, 30, 59)))
+        assertEquals(1, GateSchedule.minutesLate(lateWholeDay, DIRECTION_IN, 1, t("07:31")))
+        assertEquals(22, GateSchedule.minutesLate(lateWholeDay, DIRECTION_IN, 1, t("07:52")))
+        // Back from lunch has its own late time.
+        assertEquals(null, GateSchedule.minutesLate(lateWholeDay, DIRECTION_IN, 2, t("12:55")))
+        assertEquals(10, GateSchedule.minutesLate(lateWholeDay, DIRECTION_IN, 2, t("13:10")))
+    }
+
+    @Test
+    fun `never late without a late time, and never on the way out`() {
+        assertEquals(null, GateSchedule.minutesLate(wholeDay, DIRECTION_IN, 1, t("10:00")))
+        assertEquals(null, GateSchedule.minutesLate(null, DIRECTION_IN, 1, t("10:00")))
+        assertEquals(null, GateSchedule.minutesLate(lateWholeDay, DIRECTION_OUT, 1, t("16:30")))
+        val firstOnly = wholeDay.copy(lateAfter = listOf(t("07:30"), null))
+        assertEquals(null, GateSchedule.minutesLate(firstOnly, DIRECTION_IN, 2, t("15:00")))
+    }
+
+    @Test
+    fun `a schedule saved before late checks has none`() {
+        assertEquals(listOf(null, null), wholeDay.lateAfter)
+        assertFalse(wholeDay.lateCheckOn)
+        assertTrue(lateWholeDay.lateCheckOn)
+    }
+
+    @Test
+    fun `default late times - 90 minutes after the first opening, 30 after the others`() {
+        assertEquals(listOf(t("07:30")), GateSchedule.defaultLateAfter(morningOnly.inTimes, morningOnly.outTimes))
+        assertEquals(listOf(t("07:30"), t("13:00")), GateSchedule.defaultLateAfter(wholeDay.inTimes, wholeDay.outTimes))
+        // No room before the Going Out: no default.
+        assertEquals(listOf(null), GateSchedule.defaultLateAfter(listOf(t("06:00")), listOf(t("07:00"))))
+        for (perDay in GateSchedule.MIN_PER_DAY..GateSchedule.MAX_PER_DAY) {
+            val (inTimes, outTimes) = GateSchedule.defaultTimes(perDay)
+            assertTrue(GateSchedule.lateAfterValid(inTimes, outTimes, GateSchedule.defaultLateAfter(inTimes, outTimes)))
+        }
+    }
+
+    @Test
+    fun `a late time must fall inside its Coming In`() {
+        assertTrue(GateSchedule.lateAfterValid(wholeDay.inTimes, wholeDay.outTimes, listOf(t("06:00"), null)))
+        assertFalse(GateSchedule.lateAfterValid(wholeDay.inTimes, wholeDay.outTimes, listOf(t("05:59"), null)))
+        assertFalse(GateSchedule.lateAfterValid(wholeDay.inTimes, wholeDay.outTimes, listOf(t("11:30"), null)))
+        assertFalse(GateSchedule.lateAfterValid(wholeDay.inTimes, wholeDay.outTimes, listOf(t("07:30"))))
+    }
 }

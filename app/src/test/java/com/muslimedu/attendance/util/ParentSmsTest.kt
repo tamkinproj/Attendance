@@ -47,6 +47,14 @@ class ParentSmsTest {
     }
 
     @Test
+    fun `a late Coming In gets the late message`() {
+        assertEquals(
+            "Ang inyong anak na si Malik Aziz ay pumasok sa paaralan ng 7:52 AM (Sep 26, 2026) - huli ng 22 minuto.",
+            SmsTemplate.render(SmsTemplate.DEFAULT_LATE, "Malik Aziz", "S1", "07:52", "2026-09-26", null, 22),
+        )
+    }
+
+    @Test
     fun `every placeholder is filled`() {
         assertEquals(
             "S: A (C1) 12:00 PM Jan 2, 2026",

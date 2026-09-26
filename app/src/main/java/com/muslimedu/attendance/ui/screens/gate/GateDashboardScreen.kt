@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AlarmOn
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudOff
@@ -249,6 +250,18 @@ private fun SummaryCard(today: GateTodayStats, unsynced: Int) {
                     Stat(today.left, "Left", AccentBlue, Modifier.weight(1f))
                     StatDivider()
                     Stat(unsynced, "Pending sync", AccentGold, Modifier.weight(1f))
+                }
+                if (today.late > 0) {
+                    Row(modifier = Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.AlarmOn, contentDescription = null, tint = AccentGold, modifier = Modifier.size(16.dp))
+                        Text(
+                            "${today.late} late arrival(s) today",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = AccentGold,
+                            modifier = Modifier.padding(start = 6.dp),
+                        )
+                    }
                 }
                 if (today.failed > 0) {
                     Text(

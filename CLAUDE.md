@@ -79,6 +79,18 @@ this device), the same pieces the old gate screen used.
   - Per student: scan N of a direction is refused before its time
     (`GateScanCheck.NotOpenYet`, e.g. back from lunch before Coming In 2
     opens).
+  - **Late after** (the late-arrival flag, the user's next phase after
+    parent texts): each Coming In has a "Late after" time or none
+    (`GateScheduleConfig.lateAfter`, a switch + time under each Coming In
+    on the Gate Schedule screen; must be from its opening and before its
+    Going Out). A Coming In scanned after it is recorded as **Late** with
+    whole minutes late (`GateSchedule.minutesLate`: late after 7:30 means
+    7:30 is on time, 7:31 is 1 min). New schedules start with defaults
+    (first Coming In +90 min: 6:00 -> 7:30; later ones +30 min: 12:30 ->
+    1:00 PM). **A schedule saved before this has no late check at all**
+    until the admin sets one - a default time the school never chose could
+    flag students (and text parents) wrongly. Stored as
+    `gate_late_after` ("07:30,-") in `DeviceSettings`.
 - **Gate dashboard** (`GateDashboardScreen`, the home screen, no PIN):
   Coming In / Going Out buttons, sync status (pending count, last synced,
   Sync now), recent RFID records, "View all" -> `GateHistoryScreen` (by day,
@@ -122,6 +134,9 @@ this device), the same pieces the old gate screen used.
     Cancel records nothing.
   - Success card follows the mockup: tick, photo, name, "Coming In · 1 of 2
     today", Student ID / Section and today's Coming In / Going Out times.
+    A late Coming In adds a gold "Late 22 min · after 7:30 AM" chip. The
+    dashboard summary card shows "N late arrival(s) today", history has a
+    **Late** filter and a Late chip on each late record.
   - The view model outlives the screen, so it ignores the reader unless
     the screen is open (`enter()`/`exit()`) - a tap in the registration
     wizard must not record gate attendance. The wizard does the same the
@@ -142,6 +157,10 @@ this device), the same pieces the old gate screen used.
   section, card UID, `rfid_verified`, `verified_by_face`, score, `outcome`
   (`recorded` | `rejected`), reason, and a per-row `event_id` UUID. Only
   `recorded` + RFID + face = verified attendance (`isVerifiedAttendance`).
+  v11 (`MIGRATION_10_11`) adds `is_late`, `minutes_late`, `late_after`,
+  decided at scan time in `GateAttendanceRepository.recordConfirmed` and
+  uploaded as `late` / `minutes_late` / `late_after` (`late` is null when
+  that Coming In had no late check - "not checked" differs from "on time").
 - **Sync** (`GateSyncManager`): 1) card registrations
   (`RfidCardSyncManager` -> `admin_student_rfid_set`), 2) attendance ->
   `admin_gate_attendance_scan` **oldest first**, stopping at the first
@@ -215,7 +234,11 @@ this device), the same pieces the old gate screen used.
   server's `GateSmsTemplate::render` - pinned by `ParentSmsTest`), "Use
   default". Also shows how many students have a parent number and whether
   the platform's SMS switch is on (a superadmin setting on the web - no
-  texts go out while it's off).
+  texts go out while it's off). A third message, **Late Coming In**, is
+  sent instead of the Coming In one for a late scan (default "... ay
+  pumasok sa paaralan ng {time} ({date}) - huli ng {minutes_late}
+  minuto.", extra placeholder {minutes_late}); hidden when the server
+  doesn't have late messages yet.
 - **One face per student** - `FaceTemplateRepository.enroll` compares the
   new face with every other student's enrolled face in the school and
   refuses a match ("This face is already enrolled for <name> (<ID>)",
@@ -385,7 +408,23 @@ never the reliable path.
   `admin_gate_sms_templates` / `admin_gate_sms_templates_update` (admin,
   own school; each message must contain {student}; the show response also
   carries `sms_enabled`, the platform switch). Times go out as "7:42 AM",
-  dates as "Sep 26, 2026".
+  dates as "Sep 26, 2026". A late Coming In uses `late_template`.
+- **Late arrivals (server)**: `gate_events.is_late` / `minutes_late` /
+  `late_after` (migration `2026_09_26_000004`, `parent-sms.sql` part 4;
+  `GateEvent::hasLateColumns()` skips them until the migration has run, so
+  uploads never fail on a half-done deploy). The daily gate row is status
+  `late` when the day's first "in" was late (`AttendanceService::
+  firstGateInLate`). `summarizeDay` adds `late` / `minutes_late` /
+  `late_after` (of the arrival = first verified in) and `late_count`;
+  Gate Students has a **Late** tab (any late Coming In that day), a "Late N
+  min" chip and Arrival / Late after rows. Teacher Gate Records shows the
+  chip; its Sync marks a late arrival **Late** only in the homeroom
+  attendance (subject 0, and only if the school's statuses include
+  `late`) - a subject class later in the day gets Present with "(late N
+  min)" in the remark, since the morning's lateness isn't lateness to that
+  class. Checked against SQLite with real Eloquent (18 checks: out-of-order
+  uploads, lunch-return late, homeroom vs subject sync, the late text) and
+  the Gate Students page in headless Chromium.
 - **`users.phone` is a new real column** - today a phone only exists ad hoc
   inside `user_information` JSON from one admission flow, so almost no
   parent has one anywhere queryable. New migration adds the column and

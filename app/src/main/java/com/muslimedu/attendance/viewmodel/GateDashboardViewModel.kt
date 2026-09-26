@@ -23,8 +23,8 @@ import kotlinx.coroutines.launch
 import java.time.LocalTime
 import javax.inject.Inject
 
-/** Today's face-confirmed attendance at this gate, by each student's latest direction. */
-data class GateTodayStats(val onCampus: Int = 0, val left: Int = 0, val recorded: Int = 0, val failed: Int = 0)
+/** Today's face-confirmed attendance at this gate, by each student's latest direction. [late]: late Coming Ins. */
+data class GateTodayStats(val onCampus: Int = 0, val left: Int = 0, val recorded: Int = 0, val failed: Int = 0, val late: Int = 0)
 
 /**
  * The gate's home: choose Coming In or Going Out, see what's been recorded
@@ -104,6 +104,7 @@ class GateDashboardViewModel @Inject constructor(
             left = latestByStudent.count { it.value == GateScanEntity.DIRECTION_OUT },
             recorded = recorded.size,
             failed = scans.size - recorded.size,
+            late = recorded.count { it.late },
         )
     }
 

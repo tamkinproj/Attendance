@@ -31,11 +31,15 @@ data class ParentSmsUiState(
     val loadError: String? = null,
     val inTemplate: String = "",
     val outTemplate: String = "",
+    /** The Coming In text for a late scan; null when the server has no late messages yet. */
+    val lateTemplate: String? = null,
     /** What the server has now - Save is only offered when the text differs. */
     val savedIn: String = "",
     val savedOut: String = "",
+    val savedLate: String? = null,
     val defaultIn: String = SmsTemplate.DEFAULT_IN,
     val defaultOut: String = SmsTemplate.DEFAULT_OUT,
+    val defaultLate: String = SmsTemplate.DEFAULT_LATE,
     val maxLength: Int = 320,
     val schoolName: String? = null,
     /** The platform's SMS switch (superadmin, web). Null until loaded. */
@@ -48,7 +52,8 @@ data class ParentSmsUiState(
     val sampleCode: String = "2026-00123",
     val stats: ParentNumberStats = ParentNumberStats(0, 0, 0, 0),
 ) {
-    val changed: Boolean get() = inTemplate.trim() != savedIn || outTemplate.trim() != savedOut
+    val changed: Boolean
+        get() = inTemplate.trim() != savedIn || outTemplate.trim() != savedOut || lateTemplate?.trim() != savedLate
 }
 
 /**
@@ -84,14 +89,18 @@ class ParentSmsViewModel @Inject constructor(
 
     fun onOutChange(text: String) = _uiState.update { it.copy(outTemplate = text.take(it.maxLength), savedNotice = null, saveError = null) }
 
+    fun onLateChange(text: String) = _uiState.update { it.copy(lateTemplate = text.take(it.maxLength), savedNotice = null, saveError = null) }
+
     fun resetIn() = onInChange(_uiState.value.defaultIn)
 
     fun resetOut() = onOutChange(_uiState.value.defaultOut)
 
+    fun resetLate() = onLateChange(_uiState.value.defaultLate)
+
     fun save() {
         val state = _uiState.value
         if (state.saving || !state.changed) return
-        val problem = listOf("Coming In" to state.inTemplate, "Going Out" to state.outTemplate)
+        val problem = listOfNotNull("Coming In" to state.inTemplate, "Going Out" to state.outTemplate, state.lateTemplate?.let { "Late" to it })
             .firstNotNullOfOrNull { (label, text) -> validate(label, text) }
         if (problem != null) {
             _uiState.update { it.copy(saveError = problem) }
@@ -101,14 +110,14 @@ class ParentSmsViewModel @Inject constructor(
             _uiState.update { it.copy(saving = true, saveError = null, savedNotice = null) }
             val result = call {
                 apiService.adminGateSmsTemplatesUpdate(
-                    GateSmsTemplatesUpdateRequest(state.inTemplate.trim(), state.outTemplate.trim()),
+                    GateSmsTemplatesUpdateRequest(state.inTemplate.trim(), state.outTemplate.trim(), state.lateTemplate?.trim()),
                 )
             }
             result.fold(
                 onSuccess = { data ->
                     auditLogger.log(
                         action = AuditLogger.ACTION_PARENT_SMS_MESSAGES_SET,
-                        details = "in=\"${data.inTemplate}\", out=\"${data.outTemplate}\"",
+                        details = "in=\"${data.inTemplate}\", out=\"${data.outTemplate}\", late=\"${data.lateTemplate}\"",
                     )
                     _uiState.update { withData(it, data).copy(saving = false, savedNotice = "Saved - the next scans use these messages.") }
                 },
@@ -130,14 +139,18 @@ class ParentSmsViewModel @Inject constructor(
         val defaultOut = data.defaultOut ?: SmsTemplate.DEFAULT_OUT
         val inText = data.inTemplate ?: defaultIn
         val outText = data.outTemplate ?: defaultOut
+        val lateText = data.lateTemplate ?: data.defaultLate
         return state.copy(
             loadError = null,
             inTemplate = inText,
             outTemplate = outText,
+            lateTemplate = lateText,
             savedIn = inText,
             savedOut = outText,
+            savedLate = lateText,
             defaultIn = defaultIn,
             defaultOut = defaultOut,
+            defaultLate = data.defaultLate ?: SmsTemplate.DEFAULT_LATE,
             maxLength = data.maxLength ?: state.maxLength,
             schoolName = data.schoolName,
             smsEnabled = data.smsEnabled,

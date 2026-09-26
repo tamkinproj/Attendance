@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AlarmOn
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Login
@@ -72,6 +73,7 @@ private val PLACEHOLDER_LABELS = listOf(
     "{code}" to "Student ID",
     "{school}" to "School",
 )
+private val LATE_PLACEHOLDER = "{minutes_late}" to "Minutes late"
 
 /**
  * Admin > Parent SMS: the text a parent gets when their child scans at the
@@ -128,6 +130,21 @@ fun ParentSmsScreen(viewModel: ParentSmsViewModel = hiltViewModel()) {
                         onChange = viewModel::onOutChange,
                         onReset = viewModel::resetOut,
                     )
+                    state.lateTemplate?.let { lateText ->
+                        MessageEditor(
+                            title = "Late Coming In",
+                            icon = Icons.Filled.AlarmOn,
+                            color = AccentGold,
+                            text = lateText,
+                            isDefault = lateText.trim() == state.defaultLate,
+                            maxLength = state.maxLength,
+                            preview = SmsTemplate.render(lateText, state.sampleName, state.sampleCode, "07:52", today(), state.schoolName, 22),
+                            onChange = viewModel::onLateChange,
+                            onReset = viewModel::resetLate,
+                            note = "Sent instead of the Coming In text when the scan is after its \"Late after\" time (Admin > Gate Schedule).",
+                            extraPlaceholders = listOf(LATE_PLACEHOLDER),
+                        )
+                    }
                     state.saveError?.let {
                         Text(it, color = AccentRed, modifier = Modifier.padding(top = 16.dp))
                     }
@@ -239,6 +256,8 @@ private fun MessageEditor(
     preview: String,
     onChange: (String) -> Unit,
     onReset: () -> Unit,
+    note: String? = null,
+    extraPlaceholders: List<Pair<String, String>> = emptyList(),
 ) {
     // A TextFieldValue so a placeholder chip goes in where the cursor is.
     var field by remember { mutableStateOf(TextFieldValue(text, TextRange(text.length))) }
@@ -262,6 +281,14 @@ private fun MessageEditor(
                     modifier = Modifier.padding(start = 8.dp).weight(1f),
                 )
                 if (!isDefault) TextButton(onClick = onReset) { Text("Use default") }
+            }
+            note?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
             }
             OutlinedTextField(
                 value = field,
@@ -290,7 +317,7 @@ private fun MessageEditor(
                 modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                PLACEHOLDER_LABELS.forEach { (placeholder, label) ->
+                (PLACEHOLDER_LABELS + extraPlaceholders).forEach { (placeholder, label) ->
                     AssistChip(
                         onClick = {
                             val start = field.selection.min

@@ -155,6 +155,9 @@ class GateSyncManager @Inject constructor(
                 faceConfirmed = scan.verifiedByFace,
                 faceScore = scan.faceMatchScore,
                 deviceEventId = scan.eventId.ifEmpty { null },
+                late = scan.lateAfter?.let { scan.late },
+                minutesLate = scan.minutesLate,
+                lateAfter = scan.lateAfter,
             ),
         )
         if (response.success) {

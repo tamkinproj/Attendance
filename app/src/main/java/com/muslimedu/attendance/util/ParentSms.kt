@@ -35,7 +35,10 @@ fun formatPhMobile(phone: String): String =
 object SmsTemplate {
     const val DEFAULT_IN = "Ang inyong anak na si {student} ay pumasok sa paaralan ng {time} ({date})."
     const val DEFAULT_OUT = "Ang inyong anak na si {student} ay lumabas ng paaralan ng {time} ({date})."
-    val PLACEHOLDERS = listOf("{student}", "{code}", "{time}", "{date}", "{school}")
+
+    /** Sent instead of the Coming In text when the scan was after its "Late after" time. */
+    const val DEFAULT_LATE = "Ang inyong anak na si {student} ay pumasok sa paaralan ng {time} ({date}) - huli ng {minutes_late} minuto."
+    val PLACEHOLDERS = listOf("{student}", "{code}", "{time}", "{date}", "{school}", "{minutes_late}")
 
     /** GSM-7 text: 160 characters fit one SMS; longer texts are sent as 153-character parts. */
     fun segments(text: String): Int = when {
@@ -44,13 +47,22 @@ object SmsTemplate {
         else -> (text.length + 152) / 153
     }
 
-    fun render(template: String, student: String, code: String, time: String, date: String, school: String?): String =
+    fun render(
+        template: String,
+        student: String,
+        code: String,
+        time: String,
+        date: String,
+        school: String?,
+        minutesLate: Int? = null,
+    ): String =
         template
             .replace("{student}", student)
             .replace("{code}", code)
             .replace("{time}", formatTime(time))
             .replace("{date}", formatDate(date))
             .replace("{school}", school.orEmpty())
+            .replace("{minutes_late}", minutesLate?.toString().orEmpty())
             .trim()
 
     fun formatTime(time: String): String = runCatching {
