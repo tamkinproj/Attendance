@@ -11,6 +11,9 @@ import java.util.Base64
  * StudentFace in the Laravel patch).
  */
 object FaceCodec {
+    /** Numbers per angle from MobileFaceNet - the only model faces are shared or backed up for. */
+    const val MOBILEFACENET_SIZE = 192
+
     fun toBytes(embedding: FloatArray): ByteArray {
         val buffer = ByteBuffer.allocate(embedding.size * Float.SIZE_BYTES).order(ByteOrder.LITTLE_ENDIAN)
         embedding.forEach { buffer.putFloat(it) }
@@ -30,6 +33,9 @@ object FaceCodec {
         if (bytes.isEmpty() || bytes.size % Float.SIZE_BYTES != 0) return null
         return fromBytes(bytes)
     }
+
+    /** A MobileFaceNet angle from base64, or null if it isn't exactly [MOBILEFACENET_SIZE] numbers. */
+    fun mobileFaceNetFromBase64(text: String): FloatArray? = fromBase64(text)?.takeIf { it.size == MOBILEFACENET_SIZE }
 }
 
 /** One angle of a face in a form that can leave this phone (school server, backup file). */

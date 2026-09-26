@@ -146,7 +146,7 @@ class BackupRepository @Inject constructor(
 
     private fun toPortable(face: BackupFace): PortableFace? {
         if (face.model != FaceTemplateEntity.MODEL_MOBILEFACENET) return null
-        val angles = face.angles.map { PortableFaceAngle(it.pose, FaceCodec.fromBase64(it.embedding) ?: return null, it.livenessScore) }
+        val angles = face.angles.map { PortableFaceAngle(it.pose, FaceCodec.mobileFaceNetFromBase64(it.embedding) ?: return null, it.livenessScore) }
         return angles.takeIf { it.isNotEmpty() }?.let { PortableFace(face.model, face.version, it) }
     }
 }

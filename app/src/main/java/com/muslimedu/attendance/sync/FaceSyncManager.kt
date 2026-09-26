@@ -193,7 +193,7 @@ class FaceSyncManager @Inject constructor(
             if (dto.model != FaceTemplateEntity.MODEL_MOBILEFACENET) return null
             val version = dto.version?.takeIf { it.isNotBlank() } ?: return null
             val angles = dto.templates.orEmpty().map { angle ->
-                val embedding = FaceCodec.fromBase64(angle.embedding) ?: return null
+                val embedding = FaceCodec.mobileFaceNetFromBase64(angle.embedding) ?: return null
                 PortableFaceAngle(angle.pose, embedding, angle.livenessScore ?: 0f)
             }
             if (angles.isEmpty()) return null

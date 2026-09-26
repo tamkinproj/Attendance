@@ -26,4 +26,10 @@ class FaceCodecTest {
         assertNull(FaceCodec.fromBase64(""))
         assertNull(FaceCodec.fromBase64("AAE=")) // 2 bytes, not a whole float
     }
+
+    @Test
+    fun `a shared face angle must be exactly MobileFaceNet's 192 numbers`() {
+        assertNull(FaceCodec.mobileFaceNetFromBase64(FaceCodec.toBase64(FloatArray(128) { 0.1f })))
+        assertEquals(192, FaceCodec.mobileFaceNetFromBase64(FaceCodec.toBase64(FloatArray(192) { 0.1f }))?.size)
+    }
 }
