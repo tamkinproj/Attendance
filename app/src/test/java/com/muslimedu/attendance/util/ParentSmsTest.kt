@@ -37,7 +37,7 @@ class ParentSmsTest {
     @Test
     fun `default messages read like the school's own Filipino text`() {
         assertEquals(
-            "Ang inyong anak na si Malik Aziz ay pumasok sa paaralan ng 7:05 AM (Sep 26, 2026).",
+            "Manhaj School: Ang inyong anak na si Malik Aziz ay pumasok sa paaralan ng 7:05 AM (Sep 26, 2026).",
             SmsTemplate.render(SmsTemplate.DEFAULT_IN, "Malik Aziz", "2026-001", "07:05", "2026-09-26", "Manhaj School"),
         )
         assertEquals(

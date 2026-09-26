@@ -242,7 +242,11 @@ this device), the same pieces the old gate screen used.
   `ParentSmsViewModel`): the wording of the text a parent gets on each
   scan - one for Coming In, one for Going Out, per school, kept on the
   server (it sends the texts), so this screen needs a connection. Default
-  is Filipino, from the user's own example: "Ang inyong anak na si
+  is Filipino, from the user's own example, **prefixed with the school's
+  name** ("{school}: ..." - with the free phone gateway the sender shows
+  only the SIM's number, and a SIM can't send under a name; a real sender
+  name needs Semaphore's approved sender ID; with no school name the
+  leftover ": " is dropped): "Ang inyong anak na si
   {student} ay pumasok sa paaralan ng {time} ({date})." / "... ay lumabas
   ng paaralan ng ...". Placeholders {student} (required) {time} ("7:42
   AM") {date} ("Sep 26, 2026") {code} {school}, inserted by chips at the

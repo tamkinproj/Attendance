@@ -33,11 +33,13 @@ fun formatPhMobile(phone: String): String =
  * [date] is "yyyy-MM-dd", shown as "Sep 26, 2026".
  */
 object SmsTemplate {
-    const val DEFAULT_IN = "Ang inyong anak na si {student} ay pumasok sa paaralan ng {time} ({date})."
-    const val DEFAULT_OUT = "Ang inyong anak na si {student} ay lumabas ng paaralan ng {time} ({date})."
+    const val DEFAULT_IN = "{school}: Ang inyong anak na si {student} ay pumasok sa paaralan ng {time} ({date})."
+    const val DEFAULT_OUT = "{school}: Ang inyong anak na si {student} ay lumabas ng paaralan ng {time} ({date})."
 
     /** Sent instead of the Coming In text when the scan was after its "Late after" time. */
-    const val DEFAULT_LATE = "Ang inyong anak na si {student} ay pumasok sa paaralan ng {time} ({date}) - huli ng {minutes_late} minuto."
+    const val DEFAULT_LATE = "{school}: Ang inyong anak na si {student} ay pumasok sa paaralan ng {time} ({date}) - huli ng {minutes_late} minuto."
+    /** The texts start with the school's name, so parents see who it's from - the phone gateway's sender is only a number. */
+    private val LEADING_SEPARATOR = Regex("""^[:\-\s]+""")
     val PLACEHOLDERS = listOf("{student}", "{code}", "{time}", "{date}", "{school}", "{minutes_late}")
 
     /** GSM-7 text: 160 characters fit one SMS; longer texts are sent as 153-character parts. */
@@ -64,6 +66,8 @@ object SmsTemplate {
             .replace("{school}", school.orEmpty())
             .replace("{minutes_late}", minutesLate?.toString().orEmpty())
             .trim()
+            // No school name: drop the "{school}: " prefix's leftover ": ".
+            .replace(LEADING_SEPARATOR, "")
 
     fun formatTime(time: String): String = runCatching {
         LocalTime.parse(time.take(5), DateTimeFormatter.ofPattern("HH:mm"))
