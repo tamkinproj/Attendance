@@ -15,6 +15,8 @@ import com.muslimedu.attendance.data.remote.dto.GateAttendanceScanData
 import com.muslimedu.attendance.data.remote.dto.GateAttendanceScanRequest
 import com.muslimedu.attendance.data.remote.dto.GateAttendanceTodayData
 import com.muslimedu.attendance.data.remote.dto.GateAttendanceTodayRequest
+import com.muslimedu.attendance.data.remote.dto.GateDeviceHeartbeatData
+import com.muslimedu.attendance.data.remote.dto.GateDeviceHeartbeatRequest
 import com.muslimedu.attendance.data.remote.dto.GateRejectedScanData
 import com.muslimedu.attendance.data.remote.dto.GateRejectedScanRequest
 import com.muslimedu.attendance.data.remote.dto.GateSmsTemplatesData
@@ -131,4 +133,8 @@ interface ApiService {
 
     @POST("admin_gate_sms_templates_update")
     suspend fun adminGateSmsTemplatesUpdate(@Body request: GateSmsTemplatesUpdateRequest): ApiEnvelope<GateSmsTemplatesData>
+
+    /** This gate phone's health for the web's Gate Devices page. See [GateDeviceHeartbeatRequest]. */
+    @POST("admin_gate_device_heartbeat")
+    suspend fun adminGateDeviceHeartbeat(@Body request: GateDeviceHeartbeatRequest): ApiEnvelope<GateDeviceHeartbeatData>
 }

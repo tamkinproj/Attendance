@@ -38,6 +38,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.muslimedu.attendance.data.db.entities.GateScanEntity
+import com.muslimedu.attendance.data.local.DeviceHealthReport
+import com.muslimedu.attendance.data.remote.dto.GateDeviceHeartbeatRequest
 import com.muslimedu.attendance.data.remote.dto.UserDto
 import com.muslimedu.attendance.ui.components.InitialsAvatar
 import com.muslimedu.attendance.ui.components.SectionHeader
@@ -48,6 +50,7 @@ import com.muslimedu.attendance.ui.theme.AccentRed
 import com.muslimedu.attendance.ui.theme.AccentRedContainer
 import com.muslimedu.attendance.ui.theme.BrandPrimary
 import com.muslimedu.attendance.ui.theme.BrandPrimaryContainer
+import com.muslimedu.attendance.util.DeviceHealth
 import com.muslimedu.attendance.viewmodel.SyncViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -69,6 +72,9 @@ fun SyncScreen(
     val downloadMessage by viewModel.downloadMessage.collectAsState()
     val studentCount by viewModel.studentCount.collectAsState()
     val schoolId by viewModel.schoolId.collectAsState()
+    val deviceHealth by viewModel.deviceHealth.collectAsState()
+    val deviceNow by viewModel.deviceNow.collectAsState()
+    val isReporting by viewModel.isReporting.collectAsState()
     var confirmSignOut by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { viewModel.refresh() }
@@ -130,6 +136,11 @@ fun SyncScreen(
         }
 
         item {
+            SectionHeader("This gate device", modifier = Modifier.padding(top = 24.dp))
+            DeviceHealthCard(deviceHealth, deviceNow, isReporting, onReport = viewModel::reportDeviceHealth)
+        }
+
+        item {
             SectionHeader("Students", modifier = Modifier.padding(top = 24.dp))
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -188,6 +199,79 @@ private fun AccountCard(user: UserDto, schoolId: Int, onSignOut: () -> Unit) {
             TextButton(onClick = onSignOut) {
                 Icon(Icons.Filled.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
                 Text("Sign out", modifier = Modifier.padding(start = 6.dp))
+            }
+        }
+    }
+}
+
+/**
+ * What the web's Gate Devices page sees of this phone: the name the admin
+ * gave it there, when it last reported, and the live battery / reader /
+ * clock state, with "Report now".
+ */
+@Composable
+private fun DeviceHealthCard(
+    report: DeviceHealthReport?,
+    now: GateDeviceHeartbeatRequest?,
+    isReporting: Boolean,
+    onReport: () -> Unit,
+) {
+    val clock = DeviceHealth.clockWarning(report?.clockSkewSeconds)
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                report?.webName ?: now?.model ?: "This phone",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                "Name it on the web: admin dashboard > Gate Devices",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            val (statusText, statusColor) = when {
+                report == null -> "Not reported to the school server yet" to MaterialTheme.colorScheme.onSurfaceVariant
+                report.ok -> "Reported ${DeviceHealth.ago(report.at, System.currentTimeMillis())}" to BrandPrimary
+                else -> "Last report didn't go through: ${report.message ?: "unknown error"}" +
+                    (report.lastOkAt?.let { " (last OK ${DeviceHealth.ago(it, System.currentTimeMillis())})" } ?: "") to AccentGold
+            }
+            Text(statusText, style = MaterialTheme.typography.bodyMedium, color = statusColor, modifier = Modifier.padding(top = 10.dp))
+            now?.let { device ->
+                val battery = device.batteryLevel?.let { level ->
+                    "Battery $level%" + when (device.charging) {
+                        true -> " · charging"
+                        false -> " · not charging"
+                        null -> ""
+                    }
+                } ?: "Battery unknown"
+                Text(
+                    listOf(
+                        battery,
+                        if (device.readerConnected) "Card reader connected" else "No card reader",
+                        "App ${device.appVersion}",
+                    ).joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+            if (clock != null) {
+                Text(
+                    "$clock - turn on automatic date & time in the phone's Settings.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AccentRed,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+            OutlinedButton(onClick = onReport, enabled = !isReporting, modifier = Modifier.padding(top = 12.dp)) {
+                if (isReporting) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("Report now")
+                }
             }
         }
     }

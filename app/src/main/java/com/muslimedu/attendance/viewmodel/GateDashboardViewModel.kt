@@ -9,6 +9,7 @@ import com.muslimedu.attendance.data.repository.GateScheduleConfig
 import com.muslimedu.attendance.rfid.RfidManager
 import com.muslimedu.attendance.sync.GateSyncManager
 import com.muslimedu.attendance.sync.GateSyncOutcome
+import com.muslimedu.attendance.util.DeviceHealth
 import com.muslimedu.attendance.util.NetworkMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
@@ -65,6 +66,14 @@ class GateDashboardViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     val lastSyncedAt: StateFlow<Long?> = gateAttendanceRepository.observeLastSyncedAt()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /**
+     * "This phone's clock is 12 min fast" when the server's last device-health
+     * check found it off - scans are stamped with this clock.
+     */
+    val clockWarning: StateFlow<String?> = deviceSettings.deviceHealth
+        .map { DeviceHealth.clockWarning(it?.clockSkewSeconds) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val isSyncing: StateFlow<Boolean> = gateSyncManager.isSyncing

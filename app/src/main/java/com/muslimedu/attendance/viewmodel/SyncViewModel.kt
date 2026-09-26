@@ -3,10 +3,14 @@ package com.muslimedu.attendance.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.muslimedu.attendance.data.db.entities.GateScanEntity
+import com.muslimedu.attendance.data.local.DeviceHealthReport
 import com.muslimedu.attendance.data.local.DeviceSettings
+import com.muslimedu.attendance.data.remote.dto.GateDeviceHeartbeatRequest
 import com.muslimedu.attendance.data.repository.GateAttendanceRepository
 import com.muslimedu.attendance.data.repository.StudentDownloadRepository
 import com.muslimedu.attendance.data.repository.StudentRepository
+import com.muslimedu.attendance.sync.DeviceHealthReporter
+import com.muslimedu.attendance.sync.DeviceHealthResult
 import com.muslimedu.attendance.sync.GateSyncManager
 import com.muslimedu.attendance.sync.GateSyncOutcome
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -25,6 +29,7 @@ class SyncViewModel @Inject constructor(
     private val studentDownloadRepository: StudentDownloadRepository,
     private val studentRepository: StudentRepository,
     private val deviceSettings: DeviceSettings,
+    private val deviceHealthReporter: DeviceHealthReporter,
 ) : ViewModel() {
 
     /** Face-confirmed attendance not yet on the server. */
@@ -52,13 +57,37 @@ class SyncViewModel @Inject constructor(
 
     val lastStudentDownloadAt: Long? get() = deviceSettings.lastStudentDownloadAt
 
+    /** The last report to the web's Gate Devices page. */
+    val deviceHealth: StateFlow<DeviceHealthReport?> = deviceSettings.deviceHealth
+
+    private val _deviceNow = MutableStateFlow<GateDeviceHeartbeatRequest?>(null)
+
+    /** What a report would say right now (battery, reader, app version) - read on each visit. */
+    val deviceNow: StateFlow<GateDeviceHeartbeatRequest?> = _deviceNow.asStateFlow()
+
+    private val _isReporting = MutableStateFlow(false)
+    val isReporting: StateFlow<Boolean> = _isReporting.asStateFlow()
+
     fun refresh() {
         viewModelScope.launch { _studentCount.value = studentRepository.getAll().size }
+        viewModelScope.launch { _deviceNow.value = runCatching { deviceHealthReporter.snapshot() }.getOrNull() }
+    }
+
+    fun reportDeviceHealth() {
+        if (_isReporting.value) return
+        viewModelScope.launch {
+            _isReporting.value = true
+            if (deviceHealthReporter.report(force = true) == DeviceHealthResult.NotSignedIn) {
+                _uploadMessage.value = "Sign in as a school admin to report this device."
+            }
+            _deviceNow.value = runCatching { deviceHealthReporter.snapshot() }.getOrNull()
+            _isReporting.value = false
+        }
     }
 
     fun uploadNow() {
         viewModelScope.launch {
-            _uploadMessage.value = when (val outcome = gateSyncManager.flush()) {
+            _uploadMessage.value = when (val outcome = gateSyncManager.flush().also { deviceHealthReporter.reportSoon() }) {
                 GateSyncOutcome.NotSignedIn -> "Sign in as a school admin to upload."
                 is GateSyncOutcome.Finished -> buildString {
                     append("Uploaded ${outcome.uploaded}")

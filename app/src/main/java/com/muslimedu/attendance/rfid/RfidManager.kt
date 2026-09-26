@@ -112,9 +112,19 @@ class RfidManager @Inject constructor(
     }
 
     private fun refreshStatus() {
+        val current = currentStatus()
+        readers.keyboard.setConnected(current.connected)
+        _status.value = current
+    }
+
+    /**
+     * What is plugged in right now, read from the USB port - also valid
+     * before [register] (the background sync's device-health report, with
+     * no screen open).
+     */
+    fun currentStatus(): ReaderStatus {
         val device = usbManager.deviceList.values.firstOrNull { it.looksLikeReader() }
-        readers.keyboard.setConnected(device != null)
-        _status.value = ReaderStatus(
+        return ReaderStatus(
             connected = device != null,
             deviceName = device?.let { it.productName ?: it.deviceName },
         )

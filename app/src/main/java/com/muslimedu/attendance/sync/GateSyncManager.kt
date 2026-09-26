@@ -120,6 +120,9 @@ class GateSyncManager @Inject constructor(
                 if (syncFailedAttempt(scan, now) is StepResult.Stop) break
             }
 
+            // Everything that could go up went up - the web's Gate Devices page shows this as "last synced".
+            if (stoppedReason == null) deviceSettings.lastSyncOkAt = System.currentTimeMillis()
+
             GateSyncOutcome.Finished(
                 uploaded = uploaded,
                 rejected = rejected,

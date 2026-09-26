@@ -10,6 +10,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.muslimedu.attendance.rfid.RfidManager
+import com.muslimedu.attendance.sync.DeviceHealthReporter
 import com.muslimedu.attendance.ui.navigation.AppRoot
 import com.muslimedu.attendance.ui.theme.MuslimEduAttendanceTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -25,6 +26,9 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var rfidManager: RfidManager
 
+    @Inject
+    lateinit var deviceHealthReporter: DeviceHealthReporter
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -38,6 +42,17 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    // The web's Gate Devices page says whether the app is actually open on the gate phone.
+    override fun onStart() {
+        super.onStart()
+        deviceHealthReporter.appVisible = true
+    }
+
+    override fun onStop() {
+        deviceHealthReporter.appVisible = false
+        super.onStop()
     }
 
     /**

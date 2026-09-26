@@ -14,8 +14,10 @@ android {
         applicationId = "com.muslimedu.attendance"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        // CI's run number, so the web's Gate Devices page shows which build each gate phone runs.
+        val ciBuild = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
+        versionCode = ciBuild ?: 1
+        versionName = if (ciBuild != null) "0.1.$ciBuild" else "0.1.0-local"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
