@@ -802,6 +802,105 @@ never the reliable path.
 but the RFID reader, camera and migration need real hardware - especially
 `MIGRATION_7_8` on a device that already has v7 data.
 
+### Attendance reports (Laravel + web - not in this repo)
+
+The user asked directly: "Attendance reports on the web: daily or monthly
+per class, late and absent counts, export to Excel/PDF." Delivered as
+`reports-update.zip` (needs the earlier gate/security/web-door updates).
+A read-only web admin page, **Gate Reports**, next to Gate Devices - one
+day or one month, optionally one class, built from the same `gate_events`
+data every other gate page already reads (no new table, no migration).
+
+- **`GateReportService::build(schoolId, period, value, sectionId)`** - the
+  one place the definitions live, so this page, Gate Students and the
+  "not arrived" alert can never disagree:
+  - **Present**: the gate recorded the student (RFID + face) that day.
+  - **Late**: part of Present - the day's first verified Coming In was
+    after that Coming In's "Late after" time (same flag `GateSchedule` /
+    `is_late` already compute at scan time - nothing recomputed here).
+  - **Face failed**: at the gate, but every face check that day was
+    rejected, so nothing was recorded - never counted as absent.
+  - **Absent**: a *counted* school day with no scan of any kind.
+  - **A day counts** only when it is a school day - the exact rules
+    `GateAbsenceService::noSchoolReason` already uses (weekday in the
+    school's `gate_absence_settings.school_days`, not a
+    `gate_no_school_days` row, not a published holiday/Eid/suspension in
+    `academic_calendar_events`; Monday-Friday when the absence tables
+    don't exist yet) - **and** the gate actually recorded at least one
+    scan that day. The second half matters: a day the gate phone was off
+    or not yet started isn't "every student absent", it's a day nobody
+    could have scanned - so it's shown as its own reason
+    ("No gate scans that day (gate not used)") and left out of every
+    count, the same way a holiday is. A scan that does land on an
+    otherwise-excluded day (a Saturday make-up class, a day before the
+    school even started counting) still shows on screen (lower-case p/l
+    in the day grid) but never moves the totals.
+  - **A student counts from the day they got an RFID card**
+    (`student_rfid_cards.assigned_at`, or their first scan if the card
+    registry doesn't reach that far back) - a student who never had a
+    card is listed (so the admin can see who still needs one) but is
+    never counted absent for days before or without one. "Today" always
+    counts "so far" rather than flagging everyone not-yet-scanned as
+    absent.
+  - One school's students/classes/scans only - the same `school_id` scope
+    every other admin endpoint uses; a class from another school is 404,
+    not silently empty.
+- **`SimpleXlsx`** - a small `.xlsx` writer built only on PHP's `ZipArchive`
+  (no Composer package: `PhpSpreadsheet` isn't in this app's
+  `composer.json` and the user's own hosting can't run `composer install`
+  mid-session). Sheets of styled cells (bold/header/percent/late/absent/
+  face-failed/off), column widths, frozen header rows, landscape +
+  fit-to-page print setup. Falls back to a plain CSV automatically
+  (`format=csv`, or whenever `ZipArchive` isn't compiled in) - still a
+  correct file, just without the coloring; a cell that looks like a
+  formula (a student name/code starting with `=`/`+`/`-`/`@`) is
+  quote-prefixed so it can never execute as one when opened in Excel.
+- **`GateReportController`** - `admin_gate_report` (JSON, for the page)
+  and `admin_gate_report_export` (the file, `format: xlsx|csv`, defaults
+  to xlsx). Both `requireAdmin()` (role_id 2, own school only), validate
+  `period` (day/month), `date`/`month`, and an optional `section_id`
+  checked against the admin's own school before running the report.
+- **Web `gate-reports.php/.js`**: Day/Month toggle, a date or month
+  picker with previous/next arrows (capped at today), a class dropdown,
+  four stat cards, a by-class table (a month), a by-day table (a month,
+  clicking a day jumps into that day's view), a day-by-day grid for one
+  class in a month (like a DepEd SF2/class register), and a searchable,
+  sortable student table. The chosen view is kept in the page's own URL
+  (`?period=month&month=2026-09&section=11`) so a reload or a bookmark
+  returns to the same report. Uses `authedPost`/the existing offline-data
+  cache for the JSON report (so the last-seen report still shows while
+  offline) but calls `fetch()` directly for the Excel download (a binary
+  file isn't something the JSON-shaped offline cache/queue can hold, and
+  downloading one certainly isn't a change to *queue* for later - it
+  refuses cleanly with "You're offline" instead).
+- **PDF is deliberately not a server-generated file** - it's this same
+  page, printed by the browser ("PDF" button calls `window.print()` after
+  swapping in print CSS and a page title so "Save as PDF" suggests a
+  sensible filename). A `@media print` block hides the header/controls/
+  search bar, shows a plain print header instead, and switches the page
+  size to landscape only for the one view wide enough to need it (a
+  month's day-by-day grid for one class).
+- Verified: 54 checks of `GateReportService` itself against a seeded
+  month (late arrivals, absences, a face-failure day, a marked-no-school
+  day, a published holiday, a draft/unpublished holiday correctly
+  ignored, a Saturday with no school, a day the gate wasn't used at all,
+  a student who got their card mid-month, a student with no card, a
+  second school's own separate data); 30 HTTP checks of both endpoints
+  through `/api` (token) and `/web` (cookie + CSRF) - same file byte-for-
+  byte either way, wrong role refused, another school's class 404s, bad
+  dates/months 422, the CSV formula-injection guard; the generated
+  `.xlsx` opened with Python's `openpyxl` *and* a real LibreOffice Calc
+  (converted to PDF and rendered to images, not just parsed) to catch a
+  file that's valid XML but wouldn't actually look right opened for
+  real; 46 checks driven in real Chromium through the actual login and
+  dashboard pages (the new dashboard tile, both view modes, the class
+  picker, prev/next date arrows, the URL remembering the view, search/
+  sort, clicking through from a class or day row, the Excel file
+  downloading with the right name and content, the print layout in both
+  orientations, the offline-cached fallback, no sideways scroll at phone
+  width). Not run against the real Laravel app or a real phone-sized
+  browser.
+
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
   teal - used for the logo, gradients, big icons. It's only ~3.4:1 on white,
