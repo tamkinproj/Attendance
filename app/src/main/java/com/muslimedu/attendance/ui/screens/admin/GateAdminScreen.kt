@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.HowToReg
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -32,6 +33,7 @@ import com.muslimedu.attendance.data.remote.dto.UserDto
 import com.muslimedu.attendance.ui.components.InitialsAvatar
 import com.muslimedu.attendance.ui.components.QuickActionCard
 import com.muslimedu.attendance.ui.components.SectionHeader
+import com.muslimedu.attendance.ui.theme.AccentBlue
 import com.muslimedu.attendance.ui.theme.AccentGold
 import com.muslimedu.attendance.ui.theme.AccentRed
 import com.muslimedu.attendance.ui.theme.AccentSlate
@@ -45,6 +47,7 @@ fun GateAdminScreen(
     user: UserDto,
     onStudents: () -> Unit,
     onRegister: () -> Unit,
+    onParentSms: () -> Unit,
     onGateSchedule: () -> Unit,
     onSync: () -> Unit,
     onSettings: () -> Unit,
@@ -71,11 +74,12 @@ fun GateAdminScreen(
             }
         }
 
-        SectionHeader("Students & cards", modifier = Modifier.padding(top = 24.dp))
+        SectionHeader("Students & parents", modifier = Modifier.padding(top = 24.dp))
         ActionGrid(
             listOf(
-                AdminAction(Icons.Filled.HowToReg, "Register Card & Face", AccentGold, onRegister),
+                AdminAction(Icons.Filled.HowToReg, "Register Card, Face & Number", AccentGold, onRegister),
                 AdminAction(Icons.Filled.People, "Students", BrandPrimary, onStudents),
+                AdminAction(Icons.Filled.Sms, "Parent SMS", AccentBlue, onParentSms),
             ),
         )
 

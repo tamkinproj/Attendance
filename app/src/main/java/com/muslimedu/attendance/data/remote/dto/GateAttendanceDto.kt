@@ -96,6 +96,10 @@ data class GateStudentDto(
     @SerializedName("section_name") val sectionName: String?,
     /** The student's active card on the server, or null for none. Only meaningful when [GateStudentsData.rfidManaged]. */
     @SerializedName("rfid_uid") val rfidUid: String? = null,
+    /** Whether a parent account is linked on the server - the parent number lives on it. */
+    @SerializedName("has_parent_account") val hasParentAccount: Boolean? = null,
+    /** The linked parent's mobile number, or null. Only meaningful when [GateStudentsData.parentPhoneManaged]. */
+    @SerializedName("parent_phone") val parentPhone: String? = null,
 )
 
 data class GateStudentsData(
@@ -106,6 +110,49 @@ data class GateStudentsData(
      * doesn't send `rfid_uid` must not wipe every card here.
      */
     @SerializedName("rfid_managed") val rfidManaged: Boolean? = null,
+    /** The same for parent numbers: an older server's missing `parent_phone` must not wipe them. */
+    @SerializedName("parent_phone_managed") val parentPhoneManaged: Boolean? = null,
+)
+
+/**
+ * `/admin_set_parent_phone`: the number the gate texts go to, saved on the
+ * student's linked parent account. Null clears it. Idempotent. The server
+ * refuses (422) a student with no parent account and a non-mobile number.
+ */
+data class ParentPhoneSetRequest(
+    @SerializedName("code") val code: String,
+    @SerializedName("phone") val phone: String?,
+)
+
+data class ParentPhoneSetData(
+    @SerializedName("student_id") val studentId: Int?,
+    @SerializedName("code") val code: String?,
+    @SerializedName("phone") val phone: String?,
+)
+
+/** `/admin_gate_sms_templates` - no parameters, the school is the signed-in admin's. */
+class GateSmsTemplatesRequest
+
+/** Blank or null goes back to the default wording. */
+data class GateSmsTemplatesUpdateRequest(
+    @SerializedName("in_template") val inTemplate: String?,
+    @SerializedName("out_template") val outTemplate: String?,
+)
+
+/**
+ * The school's parent text wording. [smsEnabled] is the platform's SMS
+ * gateway switch (a superadmin setting on the web) - while it's off no text
+ * goes out, whatever the wording.
+ */
+data class GateSmsTemplatesData(
+    @SerializedName("in_template") val inTemplate: String?,
+    @SerializedName("out_template") val outTemplate: String?,
+    @SerializedName("default_in") val defaultIn: String?,
+    @SerializedName("default_out") val defaultOut: String?,
+    @SerializedName("placeholders") val placeholders: List<String>?,
+    @SerializedName("max_length") val maxLength: Int?,
+    @SerializedName("school_name") val schoolName: String?,
+    @SerializedName("sms_enabled") val smsEnabled: Boolean?,
 )
 
 data class GateAttendanceScanStudentDto(

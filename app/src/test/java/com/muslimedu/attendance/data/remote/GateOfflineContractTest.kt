@@ -8,7 +8,10 @@ import com.muslimedu.attendance.data.remote.dto.ApiEnvelope
 import com.muslimedu.attendance.data.db.entities.GateScanEntity
 import com.muslimedu.attendance.data.remote.dto.GateAttendanceScanRequest
 import com.muslimedu.attendance.data.remote.dto.GateRejectedScanRequest
+import com.muslimedu.attendance.data.remote.dto.GateSmsTemplatesData
+import com.muslimedu.attendance.data.remote.dto.GateSmsTemplatesUpdateRequest
 import com.muslimedu.attendance.data.remote.dto.GateStudentsData
+import com.muslimedu.attendance.data.remote.dto.ParentPhoneSetRequest
 import com.muslimedu.attendance.data.remote.dto.StudentRfidSetRequest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -124,6 +127,51 @@ class GateOfflineContractTest {
         // An older server: no flag, so the app must keep its own cards.
         val older: ApiEnvelope<GateStudentsData> = gson.fromJson("""{"students":[{"student_id":7,"code":"2026-00123"}]}""", type)
         assertNull(older.data?.rfidManaged)
+    }
+
+    @Test
+    fun `student download carries parent numbers only when the server manages them`() {
+        val type = object : TypeToken<ApiEnvelope<GateStudentsData>>() {}.type
+        val managed: ApiEnvelope<GateStudentsData> = gson.fromJson(
+            """{"rfid_managed":true,"parent_phone_managed":true,"students":[""" +
+                """{"student_id":7,"code":"2026-00123","has_parent_account":true,"parent_phone":"09171234567"},""" +
+                """{"student_id":8,"code":"2026-00124","has_parent_account":false,"parent_phone":null}]}""",
+            type,
+        )
+        assertEquals(true, managed.data?.parentPhoneManaged)
+        assertEquals("09171234567", managed.data?.students?.get(0)?.parentPhone)
+        assertEquals(true, managed.data?.students?.get(0)?.hasParentAccount)
+        assertEquals(false, managed.data?.students?.get(1)?.hasParentAccount)
+
+        val older: ApiEnvelope<GateStudentsData> = gson.fromJson("""{"students":[{"student_id":7,"code":"2026-00123"}]}""", type)
+        assertNull(older.data?.parentPhoneManaged)
+    }
+
+    @Test
+    fun `parent number upload sends the student code and the number`() {
+        val json = JsonParser.parseString(gson.toJson(ParentPhoneSetRequest("2026-00123", "09171234567"))).asJsonObject
+        assertEquals("2026-00123", json["code"].asString)
+        assertEquals("09171234567", json["phone"].asString)
+    }
+
+    @Test
+    fun `sms messages load and save in the server's shape`() {
+        val type = object : TypeToken<ApiEnvelope<GateSmsTemplatesData>>() {}.type
+        val loaded: ApiEnvelope<GateSmsTemplatesData> = gson.fromJson(
+            """{"in_template":"Ang inyong anak na si {student} ay pumasok sa paaralan ng {time} ({date}).",""" +
+                """"out_template":"Umalis na si {student} ng {time}.","default_in":"a","default_out":"b",""" +
+                """"placeholders":["{student}","{code}","{time}","{date}","{school}"],"max_length":320,""" +
+                """"school_name":"Manhaj School","sms_enabled":false}""",
+            type,
+        )
+        assertTrue(loaded.success)
+        assertEquals("Umalis na si {student} ng {time}.", loaded.data?.outTemplate)
+        assertEquals(320, loaded.data?.maxLength)
+        assertEquals(false, loaded.data?.smsEnabled)
+
+        val save = JsonParser.parseString(gson.toJson(GateSmsTemplatesUpdateRequest("In {student}", "Out {student}"))).asJsonObject
+        assertEquals("In {student}", save["in_template"].asString)
+        assertEquals("Out {student}", save["out_template"].asString)
     }
 
     @Test

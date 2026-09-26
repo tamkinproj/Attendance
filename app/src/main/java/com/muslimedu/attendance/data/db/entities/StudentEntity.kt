@@ -55,6 +55,17 @@ data class StudentEntity(
      */
     @ColumnInfo(name = "rfid_sync_status") val rfidSyncStatus: String = RFID_SYNCED,
     @ColumnInfo(name = "rfid_sync_error") val rfidSyncError: String? = null,
+    /**
+     * The parent's mobile number the gate texts go to, stored as
+     * 09XXXXXXXXX (see normalizePhMobile). It lives on the parent's account
+     * on the server; this is the device's copy, kept for offline display.
+     */
+    @ColumnInfo(name = "parent_phone") val parentPhone: String? = null,
+    /** Whether the server has a parent account linked to this student - null until a download says. */
+    @ColumnInfo(name = "has_parent_account") val hasParentAccount: Boolean? = null,
+    /** Same pending/synced/failed cycle as [rfidSyncStatus], for [parentPhone]. */
+    @ColumnInfo(name = "phone_sync_status") val phoneSyncStatus: String = RFID_SYNCED,
+    @ColumnInfo(name = "phone_sync_error") val phoneSyncError: String? = null,
 ) {
     companion object {
         const val RFID_PENDING = "pending"

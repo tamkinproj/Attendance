@@ -35,6 +35,9 @@ sealed class GateSyncOutcome {
         val cardsSynced: Int = 0,
         val cardsFailed: Int = 0,
         val cardsStoppedReason: String? = null,
+        val phonesSynced: Int = 0,
+        val phonesFailed: Int = 0,
+        val phonesStoppedReason: String? = null,
     ) : GateSyncOutcome()
 }
 
@@ -45,7 +48,8 @@ sealed class GateSyncOutcome {
  * returns ([GateSyncScheduler]).
  *
  * In order:
- * 1. Card registrations made on this device ([RfidCardSyncManager]).
+ * 1. Card registrations and parent numbers entered on this device
+ *    ([RfidCardSyncManager], [ParentPhoneSyncManager]).
  * 2. Attendance - face-confirmed records - to `/admin_gate_attendance_scan`,
  *    one call per record, oldest first. The backend keeps a student's first
  *    "in" as their check-in time, so this stops at the first record that
@@ -67,6 +71,7 @@ class GateSyncManager @Inject constructor(
     private val deviceSettings: DeviceSettings,
     private val tokenManager: TokenManager,
     private val rfidCardSyncManager: RfidCardSyncManager,
+    private val parentPhoneSyncManager: ParentPhoneSyncManager,
 ) {
     private val mutex = Mutex()
 
@@ -82,6 +87,7 @@ class GateSyncManager @Inject constructor(
         _isSyncing.value = true
         return try {
             val cards = rfidCardSyncManager.flush()
+            val phones = parentPhoneSyncManager.flush()
             var uploaded = 0
             var rejected = 0
             var stoppedReason: String? = null
@@ -122,6 +128,9 @@ class GateSyncManager @Inject constructor(
                 cardsSynced = cards.synced,
                 cardsFailed = cards.failed,
                 cardsStoppedReason = cards.stoppedReason,
+                phonesSynced = phones.synced,
+                phonesFailed = phones.failed,
+                phonesStoppedReason = phones.stoppedReason,
             )
         } finally {
             _isSyncing.value = false

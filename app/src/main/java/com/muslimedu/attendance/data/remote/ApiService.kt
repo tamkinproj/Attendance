@@ -17,11 +17,16 @@ import com.muslimedu.attendance.data.remote.dto.GateAttendanceTodayData
 import com.muslimedu.attendance.data.remote.dto.GateAttendanceTodayRequest
 import com.muslimedu.attendance.data.remote.dto.GateRejectedScanData
 import com.muslimedu.attendance.data.remote.dto.GateRejectedScanRequest
+import com.muslimedu.attendance.data.remote.dto.GateSmsTemplatesData
+import com.muslimedu.attendance.data.remote.dto.GateSmsTemplatesRequest
+import com.muslimedu.attendance.data.remote.dto.GateSmsTemplatesUpdateRequest
 import com.muslimedu.attendance.data.remote.dto.GateStudentsData
 import com.muslimedu.attendance.data.remote.dto.GateStudentsRequest
 import com.muslimedu.attendance.data.remote.dto.LoginData
 import com.muslimedu.attendance.data.remote.dto.LoginRequest
 import com.muslimedu.attendance.data.remote.dto.MeData
+import com.muslimedu.attendance.data.remote.dto.ParentPhoneSetData
+import com.muslimedu.attendance.data.remote.dto.ParentPhoneSetRequest
 import com.muslimedu.attendance.data.remote.dto.RefreshTokenData
 import com.muslimedu.attendance.data.remote.dto.RosterData
 import com.muslimedu.attendance.data.remote.dto.RosterRequest
@@ -115,4 +120,15 @@ interface ApiService {
     /** The server's RFID card registry - assign/replace or remove a student's card. See [StudentRfidSetRequest]. */
     @POST("admin_student_rfid_set")
     suspend fun adminStudentRfidSet(@Body request: StudentRfidSetRequest): ApiEnvelope<StudentRfidSetData>
+
+    /** The parent's mobile number for the gate texts. See [ParentPhoneSetRequest]. */
+    @POST("admin_set_parent_phone")
+    suspend fun adminSetParentPhone(@Body request: ParentPhoneSetRequest): ApiEnvelope<ParentPhoneSetData>
+
+    /** This school's Coming In / Going Out text wording. */
+    @POST("admin_gate_sms_templates")
+    suspend fun adminGateSmsTemplates(@Body request: GateSmsTemplatesRequest): ApiEnvelope<GateSmsTemplatesData>
+
+    @POST("admin_gate_sms_templates_update")
+    suspend fun adminGateSmsTemplatesUpdate(@Body request: GateSmsTemplatesUpdateRequest): ApiEnvelope<GateSmsTemplatesData>
 }

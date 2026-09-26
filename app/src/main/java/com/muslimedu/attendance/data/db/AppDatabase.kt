@@ -23,7 +23,7 @@ import com.muslimedu.attendance.data.db.entities.StudentEntity
         AuditLogEntity::class,
         GateScanEntity::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -120,6 +120,16 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_8_9 = object : Migration(8, 9) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `face_templates` ADD COLUMN `model` TEXT NOT NULL DEFAULT 'landmark'")
+            }
+        }
+
+        /** Parent mobile numbers for the gate texts, with the same upload state as cards. */
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `students` ADD COLUMN `parent_phone` TEXT")
+                db.execSQL("ALTER TABLE `students` ADD COLUMN `has_parent_account` INTEGER")
+                db.execSQL("ALTER TABLE `students` ADD COLUMN `phone_sync_status` TEXT NOT NULL DEFAULT 'synced'")
+                db.execSQL("ALTER TABLE `students` ADD COLUMN `phone_sync_error` TEXT")
             }
         }
     }

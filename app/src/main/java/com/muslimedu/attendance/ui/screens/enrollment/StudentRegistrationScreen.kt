@@ -15,11 +15,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Face
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -38,13 +43,18 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -60,18 +70,22 @@ import com.muslimedu.attendance.ui.screens.gate.ReaderLine
 import com.muslimedu.attendance.ui.theme.AccentGold
 import com.muslimedu.attendance.ui.theme.AccentRed
 import com.muslimedu.attendance.ui.theme.BrandPrimary
+import com.muslimedu.attendance.util.formatPhMobile
+import com.muslimedu.attendance.util.normalizePhMobile
 import com.muslimedu.attendance.viewmodel.RegisteredCard
+import com.muslimedu.attendance.viewmodel.RegisteredPhone
 import com.muslimedu.attendance.viewmodel.RegistrationCandidate
 import com.muslimedu.attendance.viewmodel.RegistrationTarget
 import com.muslimedu.attendance.viewmodel.RegistrationUiState
 import com.muslimedu.attendance.viewmodel.StudentRegistrationViewModel
 
-private val REGISTRATION_STEPS = listOf("Student", "Card", "Face", "Done")
+private val REGISTRATION_STEPS = listOf("Student", "Card", "Face", "Parent no.", "Done")
 
 /**
- * Register Card & Face - one wizard: pick a student, tap their card, then
- * enroll their face. [requestId] must be new for each visit (and survive
- * activity recreation) - see [StudentRegistrationViewModel.enter].
+ * Register Card, Face & Number - one wizard: pick a student, tap their card, enroll
+ * their face, then the parent's mobile number for the gate texts.
+ * [requestId] must be new for each visit (and survive activity recreation) -
+ * see [StudentRegistrationViewModel.enter].
  */
 @Composable
 fun StudentRegistrationScreen(
@@ -92,7 +106,8 @@ fun StudentRegistrationScreen(
         is RegistrationUiState.SelectingStudent -> 1
         is RegistrationUiState.TapCard, is RegistrationUiState.ConfirmReplace -> 2
         is RegistrationUiState.Face -> 3
-        is RegistrationUiState.Done -> 4
+        is RegistrationUiState.ParentPhone -> 4
+        is RegistrationUiState.Done -> 5
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -120,6 +135,9 @@ fun StudentRegistrationScreen(
                     onCapture = viewModel::captureFace,
                     onSkip = viewModel::skipFace,
                 )
+            }
+            is RegistrationUiState.ParentPhone -> StepPage {
+                ParentPhoneStep(state, onSave = viewModel::saveParentPhone, onSkip = viewModel::skipParentPhone)
             }
             is RegistrationUiState.Done -> StepPage {
                 DoneStep(state, onNext = viewModel::reset, onFinish = onFinish)
@@ -159,7 +177,7 @@ private fun StudentPicker(
     }
     Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Text(
-            "Pick a student, tap their RFID card, then enroll their face.",
+            "Pick a student, tap their RFID card, enroll their face, then add the parent's mobile number.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -217,9 +235,11 @@ private fun PickerRow(candidate: RegistrationCandidate, onClick: () -> Unit, loa
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Row(modifier = Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    CheckMark(if (student.rfidCardNumber != null) "Card" else "No card", student.rfidCardNumber != null)
-                    CheckMark(if (candidate.hasFace) "Face" else "No face", candidate.hasFace)
+                // Same labels either way - the tick or cross says which, and keeps three fitting on a phone.
+                Row(modifier = Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    CheckMark("Card", student.rfidCardNumber != null)
+                    CheckMark("Face", candidate.hasFace)
+                    CheckMark("Parent no.", student.parentPhone != null)
                 }
             }
         }
@@ -316,23 +336,63 @@ private fun ConfirmReplaceStep(state: RegistrationUiState.ConfirmReplace, onRepl
     }
 }
 
-/** The card saved at step 2, shown above the face and done steps. */
+/** One line of what the student has so far: card, face or parent number. */
+private data class SummaryItem(val icon: ImageVector, val ok: Boolean, val title: String, val note: String?)
+
+private fun cardItem(card: RegisteredCard?): SummaryItem = if (card == null) {
+    SummaryItem(Icons.Filled.CreditCard, false, "No RFID card", "The gate can't identify this student until a card is registered.")
+} else {
+    val what = when {
+        card.kept -> "kept"
+        card.replacedUid != null -> "registered (old card ${card.replacedUid} deactivated)"
+        else -> "registered"
+    }
+    SummaryItem(Icons.Filled.CreditCard, true, "RFID card ${card.uid} $what", card.serverNote)
+}
+
+private fun faceItem(enrolled: Boolean): SummaryItem = if (enrolled) {
+    SummaryItem(Icons.Filled.Face, true, "Face enrolled", null)
+} else {
+    SummaryItem(Icons.Filled.Face, false, "No face enrolled", "The gate refuses this student until a face is enrolled.")
+}
+
+private fun phoneItem(phone: RegisteredPhone): SummaryItem = if (phone.phone == null) {
+    SummaryItem(
+        Icons.Filled.Sms,
+        false,
+        "No parent number",
+        "The parent gets no gate texts. Add one later: Admin > Students, phone icon.",
+    )
+} else {
+    SummaryItem(
+        Icons.Filled.Sms,
+        true,
+        "Parent number ${formatPhMobile(phone.phone)}" + if (phone.changed) " saved" else "",
+        phone.serverNote,
+    )
+}
+
 @Composable
-private fun CardSummary(card: RegisteredCard) {
+private fun SummaryCard(items: List<SummaryItem>) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
-        Row(modifier = Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = BrandPrimary)
-            Column(modifier = Modifier.padding(start = 10.dp)) {
-                val what = when {
-                    card.kept -> "kept"
-                    card.replacedUid != null -> "registered (old card ${card.replacedUid} deactivated)"
-                    else -> "registered"
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+            items.forEach { item ->
+                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.Top) {
+                    Icon(
+                        if (item.ok) Icons.Filled.CheckCircle else item.icon,
+                        contentDescription = null,
+                        tint = if (item.ok) BrandPrimary else AccentRed,
+                    )
+                    Column(modifier = Modifier.padding(start = 10.dp)) {
+                        Text(item.title, fontWeight = FontWeight.Medium, color = if (item.ok) Color.Unspecified else AccentRed)
+                        item.note?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                 }
-                Text("RFID card ${card.uid} $what", fontWeight = FontWeight.Medium)
-                Text(card.serverNote, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -346,7 +406,7 @@ private fun FaceStep(
     onSkip: () -> Unit,
 ) {
     StudentHeader(state.student)
-    CardSummary(state.card)
+    SummaryCard(listOf(cardItem(state.card)))
     Text(
         if (state.hasFace) "Face" else "Next: enroll the face",
         style = MaterialTheme.typography.titleMedium,
@@ -397,26 +457,123 @@ private fun FaceStep(
     }
 }
 
+/**
+ * The parent's mobile number - where the gate texts go. Optional. The
+ * number is checked as the admin types (a Philippine mobile, 11 digits) and
+ * stored as 09XXXXXXXXX.
+ */
+@Composable
+private fun ParentPhoneStep(
+    state: RegistrationUiState.ParentPhone,
+    onSave: (String) -> Unit,
+    onSkip: () -> Unit,
+) {
+    val student = state.student
+    val current = student.parentPhone
+    var input by rememberSaveable(student.id) { mutableStateOf(current?.let(::formatPhMobile).orEmpty()) }
+    val focusManager = LocalFocusManager.current
+    val normalized = normalizePhMobile(input)
+    val unchanged = if (input.isBlank()) current == null else normalized != null && normalized == current
+
+    StudentHeader(student)
+    SummaryCard(listOf(cardItem(state.card), faceItem(state.faceEnrolled)))
+    Icon(
+        Icons.Filled.Sms,
+        contentDescription = null,
+        tint = BrandPrimary,
+        modifier = Modifier.padding(top = 24.dp).size(48.dp),
+    )
+    Text(
+        "Parent's mobile number",
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(top = 8.dp),
+    )
+    Text(
+        "A text goes to this number each time ${student.name} scans Coming In or Going Out.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.padding(top = 4.dp),
+    )
+    if (student.hasParentAccount == false) {
+        Text(
+            "The school server has no parent account linked to ${student.name}, so it can't keep a number yet. " +
+                "Link a parent account on the web - a number saved here waits on this device until then.",
+            style = MaterialTheme.typography.bodySmall,
+            color = AccentGold,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+    }
+    if (student.phoneSyncStatus == StudentEntity.RFID_FAILED) {
+        Text(
+            "The school server refused the last number: ${student.phoneSyncError ?: "unknown reason"}",
+            style = MaterialTheme.typography.bodySmall,
+            color = AccentRed,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+    }
+    OutlinedTextField(
+        value = input,
+        onValueChange = { typed -> input = typed.filter { it.isDigit() || it in " +-()" }.take(20) },
+        label = { Text("Mobile number") },
+        placeholder = { Text("0917 123 4567") },
+        leadingIcon = { Icon(Icons.Filled.Phone, contentDescription = null) },
+        trailingIcon = {
+            if (normalized != null) Icon(Icons.Filled.CheckCircle, contentDescription = "Valid number", tint = BrandPrimary)
+        },
+        singleLine = true,
+        isError = state.error != null,
+        supportingText = {
+            Text(
+                state.error ?: when {
+                    normalized != null -> "Texts go to ${formatPhMobile(normalized)}"
+                    input.isBlank() -> "Philippine mobile number, 11 digits"
+                    else -> "Keep typing - 11 digits starting with 09"
+                },
+            )
+        },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = {
+            focusManager.clearFocus()
+            if (!unchanged) onSave(input)
+        }),
+        modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+    )
+    Button(
+        onClick = {
+            focusManager.clearFocus()
+            onSave(input)
+        },
+        enabled = !unchanged,
+        modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+    ) {
+        Text(if (input.isBlank() && current != null) "Remove number" else "Save number")
+    }
+    TextButton(
+        onClick = {
+            focusManager.clearFocus()
+            onSkip()
+        },
+        modifier = Modifier.padding(top = 4.dp),
+    ) {
+        Text(if (current != null) "Keep ${formatPhMobile(current)}" else "Skip for now")
+    }
+}
+
 @Composable
 private fun DoneStep(state: RegistrationUiState.Done, onNext: () -> Unit, onFinish: () -> Unit) {
     StudentHeader(state.student)
-    CardSummary(state.card)
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-    ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-            CheckMark(if (state.faceEnrolled) "Face enrolled" else "No face enrolled", state.faceEnrolled)
-            if (!state.faceEnrolled) {
-                Text(
-                    "The gate refuses this student until a face is enrolled - open them again from Students.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = AccentRed,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
-        }
-    }
+    Text(
+        "Registration complete",
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = BrandPrimary,
+        modifier = Modifier.padding(top = 12.dp),
+    )
+    SummaryCard(listOf(cardItem(state.card), faceItem(state.faceEnrolled), phoneItem(state.phone)))
     Button(onClick = onNext, modifier = Modifier.fillMaxWidth().padding(top = 24.dp)) { Text("Register next student") }
     OutlinedButton(onClick = onFinish, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("Finish") }
 }

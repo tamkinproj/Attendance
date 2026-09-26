@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,6 +19,7 @@ import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -25,7 +27,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -44,6 +45,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -52,6 +56,7 @@ import com.muslimedu.attendance.ui.components.EmptyState
 import com.muslimedu.attendance.ui.theme.AccentGold
 import com.muslimedu.attendance.ui.theme.AccentRed
 import com.muslimedu.attendance.ui.theme.AccentSuccess
+import com.muslimedu.attendance.util.formatPhMobile
 import com.muslimedu.attendance.viewmodel.StudentListViewModel
 import com.muslimedu.attendance.viewmodel.StudentRow
 
@@ -59,6 +64,7 @@ private enum class StudentFilter(val label: String) {
     All("All"),
     Rfid("RFID"),
     Face("Face Enrolled"),
+    NoParentPhone("No parent no."),
     Local("Local"),
 }
 
@@ -67,6 +73,7 @@ private enum class StudentFilter(val label: String) {
 fun StudentListScreen(
     onRegisterFace: (StudentEntity) -> Unit,
     onAssignCard: (StudentEntity) -> Unit,
+    onParentPhone: (StudentEntity) -> Unit,
     viewModel: StudentListViewModel = hiltViewModel(),
 ) {
     val rows by viewModel.rows.collectAsState()
@@ -92,6 +99,7 @@ fun StudentListScreen(
                 StudentFilter.All -> true
                 StudentFilter.Rfid -> row.student.rfidCardNumber != null
                 StudentFilter.Face -> row.hasFace
+                StudentFilter.NoParentPhone -> row.student.parentPhone == null
                 StudentFilter.Local -> row.student.isLocalOnly
             }
             matchesQuery && matchesFilter
@@ -144,6 +152,7 @@ fun StudentListScreen(
                         StudentListRow(
                             row,
                             onRegisterFace = { onRegisterFace(row.student) },
+                            onParentPhone = { onParentPhone(row.student) },
                             onAssignCard = {
                                 // A student with a card chooses replace or deactivate first.
                                 if (row.student.rfidCardNumber != null) cardActionsFor = row.student else onAssignCard(row.student)
@@ -197,58 +206,95 @@ private fun StudentListRow(
     row: StudentRow,
     onRegisterFace: () -> Unit,
     onAssignCard: () -> Unit,
+    onParentPhone: () -> Unit,
     loadPhoto: suspend () -> Bitmap?,
 ) {
     val student = row.student
     val photo by produceState<Bitmap?>(initialValue = null, student.id) { value = loadPhoto() }
 
     Card(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val cachedPhoto = photo
-            if (cachedPhoto != null) {
-                Image(
-                    bitmap = cachedPhoto.asImageBitmap(),
-                    contentDescription = null,
-                    modifier = Modifier.size(40.dp).clip(CircleShape),
-                )
-            } else {
-                Icon(Icons.Filled.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            }
-            Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(student.name, fontWeight = FontWeight.Medium)
-                    if (student.isLocalOnly) {
-                        Text(
-                            text = " (local)",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = AccentGold,
-                        )
-                    }
+        Column(modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val cachedPhoto = photo
+                if (cachedPhoto != null) {
+                    Image(
+                        bitmap = cachedPhoto.asImageBitmap(),
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp).clip(CircleShape),
+                    )
+                } else {
+                    Icon(Icons.Filled.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 }
-                Text(student.code, style = MaterialTheme.typography.bodySmall)
-                student.sectionName?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                CardSyncLine(student)
+                Column(modifier = Modifier.padding(start = 12.dp).weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(student.name, fontWeight = FontWeight.Medium)
+                        if (student.isLocalOnly) {
+                            Text(
+                                text = " (local)",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = AccentGold,
+                            )
+                        }
+                    }
+                    Text(
+                        listOfNotNull(student.code, student.sectionName).joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    CardSyncLine(student)
+                    PhoneSyncLine(student)
+                }
             }
-            val hasCard = student.rfidCardNumber != null
-            IconButton(onClick = onAssignCard) {
-                Icon(
+            // Each opens the Register wizard at that step for this student.
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                StatusAction(
                     Icons.Filled.CreditCard,
-                    contentDescription = if (hasCard) "Re-assign RFID card" else "Assign RFID card",
-                    tint = if (hasCard) AccentSuccess else MaterialTheme.colorScheme.outline,
+                    "Card",
+                    student.rfidCardNumber != null,
+                    if (student.rfidCardNumber != null) "Replace or deactivate RFID card" else "Assign RFID card",
+                    onAssignCard,
                 )
-            }
-            IconButton(onClick = onRegisterFace) {
-                Icon(
-                    Icons.Filled.Face,
-                    contentDescription = if (row.hasFace) "Re-register face" else "Register face",
-                    tint = if (row.hasFace) AccentSuccess else MaterialTheme.colorScheme.outline,
+                StatusAction(Icons.Filled.Face, "Face", row.hasFace, if (row.hasFace) "Re-register face" else "Register face", onRegisterFace)
+                StatusAction(
+                    Icons.Filled.Sms,
+                    "Parent no.",
+                    student.parentPhone != null,
+                    if (student.parentPhone != null) "Change parent number" else "Add parent number",
+                    onParentPhone,
                 )
             }
         }
     }
+}
+
+/** A small icon + label button; green when the student has it, grey when not. */
+@Composable
+private fun StatusAction(icon: ImageVector, label: String, ok: Boolean, description: String, onClick: () -> Unit) {
+    val color = if (ok) AccentSuccess else MaterialTheme.colorScheme.outline
+    TextButton(
+        onClick = onClick,
+        contentPadding = PaddingValues(horizontal = 8.dp),
+        modifier = Modifier.semantics { contentDescription = description },
+    ) {
+        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
+        Text(label, color = color, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(start = 4.dp))
+    }
+}
+
+/** The parent's number and whether the school server has it yet. */
+@Composable
+private fun PhoneSyncLine(student: StudentEntity) {
+    val phone = student.parentPhone
+    val (text, color) = when (student.phoneSyncStatus) {
+        StudentEntity.RFID_FAILED -> "Parent no. refused by server: ${student.phoneSyncError ?: "refused"}" to AccentRed
+        StudentEntity.RFID_PENDING ->
+            (if (phone != null) "Parent ${formatPhMobile(phone)} - pending sync" else "Parent no. removal - pending sync") to AccentGold
+        else -> when {
+            phone != null -> "Parent ${formatPhMobile(phone)}" to MaterialTheme.colorScheme.onSurfaceVariant
+            student.hasParentAccount == false -> "No parent account on the server" to MaterialTheme.colorScheme.onSurfaceVariant
+            else -> "No parent number - no gate texts" to AccentGold
+        }
+    }
+    Text(text, style = MaterialTheme.typography.labelSmall, color = color)
 }
 
 /** Card number and whether the web admin's card registry has it yet. */

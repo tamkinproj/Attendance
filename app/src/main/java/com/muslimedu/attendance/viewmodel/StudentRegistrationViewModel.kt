@@ -15,7 +15,9 @@ import com.muslimedu.attendance.rfid.RfidEvent
 import com.muslimedu.attendance.rfid.RfidManager
 import com.muslimedu.attendance.rfid.normalizeRfidUid
 import com.muslimedu.attendance.sync.GateSyncScheduler
+import com.muslimedu.attendance.sync.ParentPhoneSyncManager
 import com.muslimedu.attendance.sync.RfidCardSyncManager
+import com.muslimedu.attendance.util.normalizePhMobile
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +33,13 @@ data class RegistrationCandidate(val student: StudentEntity, val hasFace: Boolea
 
 /** The card a student leaves the card step with. [serverNote] says whether the web admin's registry has it yet. */
 data class RegisteredCard(val uid: String, val replacedUid: String?, val kept: Boolean, val serverNote: String)
+
+/**
+ * The parent number a student leaves the number step with ([phone] null =
+ * none). [changed] is false when the admin kept or skipped it.
+ * [serverNote] says whether the school server has it yet.
+ */
+data class RegisteredPhone(val phone: String?, val changed: Boolean, val serverNote: String)
 
 sealed class RegistrationUiState {
     data object SelectingStudent : RegistrationUiState()
@@ -57,19 +66,40 @@ sealed class RegistrationUiState {
         val attempt: Int = 0,
     ) : RegistrationUiState()
 
-    data class Done(val student: StudentEntity, val card: RegisteredCard, val faceEnrolled: Boolean) : RegistrationUiState()
+    /**
+     * The parent's mobile number - where the gate texts go. Optional: the
+     * admin can skip it. [card] is null when the wizard was opened here
+     * for a student with no card yet (from the Students list).
+     */
+    data class ParentPhone(
+        val student: StudentEntity,
+        val card: RegisteredCard?,
+        val faceEnrolled: Boolean,
+        val error: String? = null,
+    ) : RegistrationUiState()
+
+    data class Done(
+        val student: StudentEntity,
+        val card: RegisteredCard?,
+        val faceEnrolled: Boolean,
+        val phone: RegisteredPhone,
+    ) : RegistrationUiState()
 }
+
+enum class RegistrationStart { CARD, FACE, PHONE }
 
 /**
  * Opens the wizard on one student (from the Students list), skipping the
- * picker. [startAtFace] goes straight to the face step when the student
- * already has a card (the list's face icon).
+ * picker. [start] FACE goes straight to the face step when the student
+ * already has a card (the list's face icon); PHONE to the parent number
+ * (the list's phone icon).
  */
-data class RegistrationTarget(val student: StudentEntity, val startAtFace: Boolean)
+data class RegistrationTarget(val student: StudentEntity, val start: RegistrationStart)
 
 /**
- * Register Card & Face: one wizard instead of separate card and face
- * screens - pick a student, tap their card, then enroll their face.
+ * Register Card, Face & Number: one wizard instead of separate card, face and phone
+ * screens - pick a student, tap their card, enroll their face, then enter
+ * the parent's mobile number for the gate texts.
  *
  * - Card: only a card read by the reader is accepted (no typed UIDs), with
  *   the one-card-one-student rules of [StudentRepository.assignRfidCard]. A
@@ -78,6 +108,10 @@ data class RegistrationTarget(val student: StudentEntity, val startAtFace: Boole
  * - Face: the same live auto-capture as the gate, saved by
  *   [FaceTemplateRepository.enroll], which refuses a face that matches
  *   another student's.
+ * - Parent number: a Philippine mobile number, saved on the device at once
+ *   and on the parent's server account as soon as it can be sent
+ *   ([ParentPhoneSyncManager]). Optional - skipping it only means that
+ *   student's parent gets no texts.
  *
  * Like the gate scan view model, this outlives the screen, so it only
  * listens to the reader while the screen is open ([enter]/[leave]) - a card
@@ -92,6 +126,7 @@ class StudentRegistrationViewModel @Inject constructor(
     private val deviceSettings: DeviceSettings,
     private val sessionManager: SessionManager,
     private val rfidCardSyncManager: RfidCardSyncManager,
+    private val parentPhoneSyncManager: ParentPhoneSyncManager,
     private val gateSyncScheduler: GateSyncScheduler,
 ) : ViewModel() {
 
@@ -129,7 +164,8 @@ class StudentRegistrationViewModel @Inject constructor(
         openedRequestId = requestId
         when {
             target == null -> reset()
-            target.startAtFace && target.student.rfidCardNumber != null -> viewModelScope.launch { keepCard(target.student) }
+            target.start == RegistrationStart.PHONE -> viewModelScope.launch { openPhoneStep(target.student) }
+            target.start == RegistrationStart.FACE && target.student.rfidCardNumber != null -> viewModelScope.launch { keepCard(target.student) }
             else -> selectStudent(target.student)
         }
     }
@@ -179,7 +215,7 @@ class StudentRegistrationViewModel @Inject constructor(
             _uiState.value = when (result) {
                 is FaceEnrollResult.Success -> {
                     refreshCandidates()
-                    RegistrationUiState.Done(student, current.card, faceEnrolled = true)
+                    phoneStep(student, current.card, faceEnrolled = true)
                 }
                 is FaceEnrollResult.NoFaceDetected -> refused("No face detected. Look straight at the camera and try again.")
                 is FaceEnrollResult.LivenessTooLow ->
@@ -200,11 +236,50 @@ class StudentRegistrationViewModel @Inject constructor(
         _uiState.value = state.copy(capturing = true, error = null, attempt = state.attempt + 1)
     }
 
-    /** Finishes without a new face: keeps the enrolled one, or leaves the student without one for now. */
+    /** Goes on without a new face: keeps the enrolled one, or leaves the student without one for now. */
     fun skipFace() {
         val state = _uiState.value as? RegistrationUiState.Face ?: return
         if (state.saving) return
-        _uiState.value = RegistrationUiState.Done(state.student, state.card, faceEnrolled = state.hasFace)
+        viewModelScope.launch { _uiState.value = phoneStep(state.student, state.card, faceEnrolled = state.hasFace) }
+    }
+
+    /**
+     * Saves what the admin typed as the parent's number. Blank removes a
+     * number the student had (or is the same as skipping when they had
+     * none); the same number as before is kept as it is.
+     */
+    fun saveParentPhone(input: String) {
+        val state = _uiState.value as? RegistrationUiState.ParentPhone ?: return
+        val current = state.student.parentPhone
+        val phone = if (input.isBlank()) null else normalizePhMobile(input)
+        if (input.isNotBlank() && phone == null) {
+            _uiState.value = state.copy(error = "That isn't a Philippine mobile number. Use 11 digits, e.g. 0917 123 4567.")
+            return
+        }
+        if (phone == current) return skipParentPhone()
+        viewModelScope.launch {
+            studentRepository.setParentPhone(state.student, phone)
+            val updated = studentRepository.reload(state.student) ?: state.student.copy(parentPhone = phone)
+            _uiState.value = RegistrationUiState.Done(
+                updated,
+                state.card,
+                state.faceEnrolled,
+                RegisteredPhone(phone, changed = true, serverNote = "Sending to the school server..."),
+            )
+            refreshCandidates()
+            launch { updatePhoneNote(updated, uploadPhoneAndDescribe(updated)) }
+        }
+    }
+
+    /** Finishes with the number the student already has, or none. */
+    fun skipParentPhone() {
+        val state = _uiState.value as? RegistrationUiState.ParentPhone ?: return
+        _uiState.value = RegistrationUiState.Done(
+            state.student,
+            state.card,
+            state.faceEnrolled,
+            RegisteredPhone(state.student.parentPhone, changed = false, serverNote = describePhoneSync(state.student, null)),
+        )
     }
 
     fun reset() {
@@ -262,15 +337,50 @@ class StudentRegistrationViewModel @Inject constructor(
         _uiState.value = RegistrationUiState.Face(student, card, hasFace = hasFace, capturing = !hasFace)
     }
 
+    /** Re-read so the step shows the number a download or an earlier visit left. */
+    private suspend fun phoneStep(student: StudentEntity, card: RegisteredCard?, faceEnrolled: Boolean) =
+        RegistrationUiState.ParentPhone(studentRepository.reload(student) ?: student, card, faceEnrolled)
+
+    /** Straight to the number (the Students list's phone icon), with whatever card and face the student has. */
+    private suspend fun openPhoneStep(student: StudentEntity) {
+        val current = studentRepository.reload(student) ?: student
+        val card = current.rfidCardNumber?.let {
+            RegisteredCard(it, replacedUid = null, kept = true, serverNote = describeCardSync(current, null))
+        }
+        val hasFace = faceTemplateRepository.hasTemplate(current.schoolId, current.studentId)
+        _uiState.value = RegistrationUiState.ParentPhone(current, card, hasFace)
+    }
+
     /** The upload finishes after the wizard has moved on - update whichever step is showing this student. */
     private fun updateCardNote(student: StudentEntity, note: String) {
         _uiState.value = when (val state = _uiState.value) {
             is RegistrationUiState.Face ->
                 if (state.student.id == student.id) state.copy(card = state.card.copy(serverNote = note)) else state
+            is RegistrationUiState.ParentPhone ->
+                if (state.student.id == student.id) state.copy(card = state.card?.copy(serverNote = note)) else state
             is RegistrationUiState.Done ->
-                if (state.student.id == student.id) state.copy(card = state.card.copy(serverNote = note)) else state
+                if (state.student.id == student.id) state.copy(card = state.card?.copy(serverNote = note)) else state
             else -> state
         }
+    }
+
+    private fun updatePhoneNote(student: StudentEntity, note: String) {
+        val state = _uiState.value as? RegistrationUiState.Done ?: return
+        if (state.student.id == student.id) _uiState.value = state.copy(phone = state.phone.copy(serverNote = note))
+    }
+
+    private suspend fun uploadPhoneAndDescribe(student: StudentEntity): String {
+        gateSyncScheduler.syncWhenOnline()
+        val outcome = parentPhoneSyncManager.flush()
+        refreshCandidates()
+        return describePhoneSync(studentRepository.reload(student) ?: student, outcome.stoppedReason)
+    }
+
+    private fun describePhoneSync(student: StudentEntity, stoppedReason: String?): String = when (student.phoneSyncStatus) {
+        StudentEntity.RFID_SYNCED ->
+            if (student.parentPhone != null) "Saved on the school server - gate texts go to this number." else "No number on the school server."
+        StudentEntity.RFID_FAILED -> "The school server refused it: ${student.phoneSyncError ?: "unknown reason"}"
+        else -> "Saved on this device. " + (stoppedReason ?: "It will sync with the school server automatically.")
     }
 
     /** Uploads right away when possible; otherwise it goes up as soon as the device is online. */

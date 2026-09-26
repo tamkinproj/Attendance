@@ -128,4 +128,28 @@ interface StudentDao {
 
     @Query("UPDATE students SET school_id = :toSchoolId WHERE school_id = :fromSchoolId")
     suspend fun moveToSchool(fromSchoolId: Int, toSchoolId: Int)
+
+    /** Sets (or with null, removes) the parent's number and marks it for upload. */
+    @Query(
+        "UPDATE students SET parent_phone = :phone, phone_sync_status = 'pending', phone_sync_error = NULL, " +
+            "updated_at = :updatedAt WHERE school_id = :schoolId AND student_id = :studentId",
+    )
+    suspend fun setParentPhonePending(schoolId: Int, studentId: Int, phone: String?, updatedAt: Long)
+
+    @Query("SELECT * FROM students WHERE school_id = :schoolId AND phone_sync_status = 'pending' ORDER BY updated_at ASC")
+    suspend fun getPhonePending(schoolId: Int): List<StudentEntity>
+
+    /** Same guard as [updateRfidSyncState]: a number changed again mid-upload stays pending. */
+    @Query(
+        "UPDATE students SET phone_sync_status = :status, phone_sync_error = :error " +
+            "WHERE id = :id AND parent_phone IS :sentPhone",
+    )
+    suspend fun updatePhoneSyncState(id: Long, sentPhone: String?, status: String, error: String?)
+
+    /** A refusal also says whether the server has a parent account - e.g. "no linked parent" means it has none. */
+    @Query("UPDATE students SET has_parent_account = :hasParentAccount WHERE id = :id")
+    suspend fun setHasParentAccount(id: Long, hasParentAccount: Boolean)
+
+    @Query("UPDATE students SET phone_sync_status = 'pending', phone_sync_error = NULL WHERE school_id = :schoolId AND phone_sync_status = 'failed'")
+    suspend fun retryFailedPhones(schoolId: Int)
 }

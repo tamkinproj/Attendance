@@ -67,6 +67,9 @@ class SyncViewModel @Inject constructor(
                     if (outcome.cardsSynced > 0) append(". ${outcome.cardsSynced} card(s) registered")
                     if (outcome.cardsFailed > 0) append(". ${outcome.cardsFailed} card(s) refused - see Students")
                     outcome.cardsStoppedReason?.let { append(". Cards: $it") }
+                    if (outcome.phonesSynced > 0) append(". ${outcome.phonesSynced} parent number(s) saved")
+                    if (outcome.phonesFailed > 0) append(". ${outcome.phonesFailed} parent number(s) refused - see Students")
+                    outcome.phonesStoppedReason?.let { append(". Parent numbers: $it") }
                 }
             }
         }
@@ -76,6 +79,7 @@ class SyncViewModel @Inject constructor(
         viewModelScope.launch {
             gateAttendanceRepository.retryFailed()
             studentRepository.retryFailedCards()
+            studentRepository.retryFailedPhones()
             uploadNow()
         }
     }

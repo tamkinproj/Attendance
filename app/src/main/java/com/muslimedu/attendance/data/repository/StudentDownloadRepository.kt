@@ -10,6 +10,7 @@ import com.muslimedu.attendance.data.remote.dto.GateStudentDto
 import com.muslimedu.attendance.data.remote.dto.GateStudentsRequest
 import com.muslimedu.attendance.data.remote.extractApiErrorMessage
 import com.muslimedu.attendance.rfid.normalizeRfidUid
+import com.muslimedu.attendance.util.normalizePhMobile
 import retrofit2.HttpException
 import java.io.IOException
 import javax.inject.Inject
@@ -38,7 +39,8 @@ internal fun isMissingEndpoint(httpCode: Int): Boolean = httpCode == 404 || http
 /**
  * Downloads the whole school's student list (`admin_gate_students`) into the
  * local cache so gate scanning works offline - including each student's
- * registered RFID card when the server keeps the card registry.
+ * registered RFID card when the server keeps the card registry, and the
+ * parent number the gate texts go to.
  *
  * Merged by `code` - the one identifier the backend and this device share.
  * A student already on the device (downloaded before, or added by hand)
@@ -69,13 +71,18 @@ class StudentDownloadRepository @Inject constructor(
 
         val students = data.students ?: return Result.failure(Exception("The server did not return a student list"))
         val schoolId = deviceSettings.schoolId.value
-        val summary = merge(schoolId, students, rfidManaged = data.rfidManaged == true)
+        val summary = merge(schoolId, students, rfidManaged = data.rfidManaged == true, phonesManaged = data.parentPhoneManaged == true)
         deviceSettings.lastStudentDownloadAt = System.currentTimeMillis()
         students.forEach { photoCache.prefetch(schoolId, it.studentId, it.photo) }
         return Result.success(summary)
     }
 
-    private suspend fun merge(schoolId: Int, students: List<GateStudentDto>, rfidManaged: Boolean): StudentDownloadSummary {
+    private suspend fun merge(
+        schoolId: Int,
+        students: List<GateStudentDto>,
+        rfidManaged: Boolean,
+        phonesManaged: Boolean,
+    ): StudentDownloadSummary {
         var added = 0
         var updated = 0
         var skipped = 0
@@ -101,6 +108,7 @@ class StudentDownloadRepository @Inject constructor(
                     faceTemplateDao.reassignStudent(schoolId, existing.studentId, dto.studentId)
                 }
                 val card = if (rfidManaged) cardFromServer(existing, code, dto.rfidUid, schoolId, now) else null
+                val phone = if (phonesManaged) phoneFromServer(existing, dto) else PhoneState.keep(existing)
                 studentDao.insert(
                     StudentEntity(
                         id = existing?.id ?: 0,
@@ -119,12 +127,40 @@ class StudentDownloadRepository @Inject constructor(
                         updatedAt = now,
                         rfidSyncStatus = if (card != null) StudentEntity.RFID_SYNCED else existing?.rfidSyncStatus ?: StudentEntity.RFID_SYNCED,
                         rfidSyncError = if (card != null) null else existing?.rfidSyncError,
+                        parentPhone = phone.phone,
+                        hasParentAccount = if (phonesManaged) dto.hasParentAccount else existing?.hasParentAccount,
+                        phoneSyncStatus = phone.status,
+                        phoneSyncError = phone.error,
                     ),
                 )
                 if (existing == null) added++ else updated++
             }
         }
         return StudentDownloadSummary(added, updated, skipped)
+    }
+
+    private class PhoneState(val phone: String?, val status: String, val error: String?) {
+        companion object {
+            fun keep(existing: StudentEntity?) = PhoneState(
+                existing?.parentPhone,
+                existing?.phoneSyncStatus ?: StudentEntity.RFID_SYNCED,
+                existing?.phoneSyncError,
+            )
+        }
+    }
+
+    /**
+     * The parent number per the server, unless the admin changed it on this
+     * device and that hasn't been accepted yet - the device's number wins
+     * then, same rule as cards. One refused earlier goes back in the upload
+     * queue once the server reports a parent account (it was most likely
+     * refused for having none).
+     */
+    private fun phoneFromServer(existing: StudentEntity?, dto: GateStudentDto): PhoneState = when {
+        existing?.phoneSyncStatus == StudentEntity.RFID_PENDING -> PhoneState.keep(existing)
+        existing?.phoneSyncStatus == StudentEntity.RFID_FAILED ->
+            if (dto.hasParentAccount == true) PhoneState(existing?.parentPhone, StudentEntity.RFID_PENDING, null) else PhoneState.keep(existing)
+        else -> PhoneState(dto.parentPhone?.let { normalizePhMobile(it) ?: it.trim().ifEmpty { null } }, StudentEntity.RFID_SYNCED, null)
     }
 
     /** A card decision from the server's registry; [uid] null means "no card". */

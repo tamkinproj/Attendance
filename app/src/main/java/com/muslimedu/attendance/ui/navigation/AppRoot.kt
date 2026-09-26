@@ -33,6 +33,7 @@ import com.muslimedu.attendance.ui.screens.admin.AdminPinScreen
 import com.muslimedu.attendance.ui.screens.admin.AuditLogScreen
 import com.muslimedu.attendance.ui.screens.admin.GateAdminScreen
 import com.muslimedu.attendance.ui.screens.admin.GateScheduleScreen
+import com.muslimedu.attendance.ui.screens.admin.ParentSmsScreen
 import com.muslimedu.attendance.ui.screens.admin.SettingsScreen
 import com.muslimedu.attendance.ui.screens.admin.StudentListScreen
 import com.muslimedu.attendance.ui.screens.auth.LoginScreen
@@ -46,6 +47,7 @@ import com.muslimedu.attendance.viewmodel.AdminPinViewModel
 import com.muslimedu.attendance.viewmodel.AuthState
 import com.muslimedu.attendance.viewmodel.AuthViewModel
 import com.muslimedu.attendance.viewmodel.GateDirection
+import com.muslimedu.attendance.viewmodel.RegistrationStart
 import com.muslimedu.attendance.viewmodel.RegistrationTarget
 
 /**
@@ -87,7 +89,8 @@ private enum class Screen(val title: String, val requiresUnlock: Boolean) {
     AdminPin("Admin", false),
     AdminHome("Admin", true),
     Students("Students", true),
-    Register("Register Card & Face", true),
+    Register("Register Student", true),
+    ParentSms("Parent SMS", true),
     GateSchedule("Gate Schedule", true),
     FaceSettings("Face Verification Settings", true),
     AuditLog("Audit Log", true),
@@ -235,6 +238,7 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
                     user = user,
                     onStudents = { navigate(Screen.Students) },
                     onRegister = { openRegistration(null) },
+                    onParentSms = { navigate(Screen.ParentSms) },
                     onGateSchedule = {
                         scheduleFromGate = false
                         navigate(Screen.GateSchedule)
@@ -245,8 +249,9 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
                     onChangePin = { navigate(Screen.ChangePin) },
                 )
                 Screen.Students -> StudentListScreen(
-                    onRegisterFace = { student -> openRegistration(RegistrationTarget(student, startAtFace = true)) },
-                    onAssignCard = { student -> openRegistration(RegistrationTarget(student, startAtFace = false)) },
+                    onRegisterFace = { student -> openRegistration(RegistrationTarget(student, RegistrationStart.FACE)) },
+                    onAssignCard = { student -> openRegistration(RegistrationTarget(student, RegistrationStart.CARD)) },
+                    onParentPhone = { student -> openRegistration(RegistrationTarget(student, RegistrationStart.PHONE)) },
                 )
                 Screen.Register -> StudentRegistrationScreen(
                     target = registerTarget,
@@ -256,6 +261,7 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
                 Screen.GateSchedule -> GateScheduleScreen(onSaved = { navigate(parentOf(Screen.GateSchedule)) })
                 Screen.FaceSettings -> SettingsScreen()
                 Screen.AuditLog -> AuditLogScreen()
+                Screen.ParentSms -> ParentSmsScreen()
                 Screen.Sync -> SyncScreen(user = user, onLogout = authViewModel::logout)
                 Screen.ResetPinLogin -> LoginScreen(
                     subtitle = "Sign in again with a school admin account to reset this device's PIN",

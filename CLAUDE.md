@@ -155,11 +155,15 @@ this device), the same pieces the old gate screen used.
   network returns** (`GateSyncScheduler`: a one-off `SyncWorker` with a
   CONNECTED constraint, queued on every record). The UI shows Pending Sync
   -> Synchronizing -> Synced.
-- **Register Card & Face** (Admin > Register Card & Face, PIN-locked) is
-  one wizard, not separate card and face screens (the user asked for it
-  that way): **1 Student** (picker with search and each student's Card /
-  Face status) -> **2 Card** -> **3 Face** -> **4 Done** (summary, "Register
-  next student" / "Finish"). `StudentRegistrationScreen` +
+- **Register Card, Face & Number** (Admin > Register Card, Face & Number,
+  PIN-locked; screen title "Register Student") is one wizard, not separate
+  screens (the user asked for it that way, then for the parent number as
+  a step of it): **1 Student** (picker with search and each student's
+  Card / Face / Parent no. ticks) -> **2 Card** -> **3 Face** -> **4 Parent
+  no.** -> **5 Done** (one summary card with card, face and number, then
+  "Register next student" / "Finish"). The step bar (`StepIndicator`) is
+  numbered circles with labels under them - five steps didn't fit the old
+  one-line label on a phone. `StudentRegistrationScreen` +
   `StudentRegistrationViewModel`; the old `RfidEnrollmentScreen` /
   `FaceEnrollmentScreen` and their view models were removed.
   - Card: attaches a physically read card to an existing student - never
@@ -172,16 +176,46 @@ this device), the same pieces the old gate screen used.
     result shows on the card summary).
   - Face: the gate's own live auto-capture (`LiveFaceCaptureView`) +
     `FaceTemplateRepository.enroll`. A student who already has a face can
-    keep it or re-enroll; "Skip face for now" finishes without one (the
+    keep it or re-enroll; "Skip face for now" goes on without one (the
     Done step warns that the gate refuses them until a face is enrolled).
-  - Students list: card number + sync state; the card icon opens Replace /
-    Deactivate (Replace opens the wizard at the card step), the face icon
-    opens the wizard at the face step (card step if there's no card yet).
-    Back from a wizard opened there returns to Students.
+  - Parent no.: the parent's mobile number the gate texts go to. Optional
+    ("Skip for now"; Done says the parent gets no texts). Checked as it's
+    typed - a Philippine mobile, stored as `09XXXXXXXXX`
+    (`normalizePhMobile`, same rule as the server's `PhMobileNumber`);
+    blank removes a number the student had, and a student who has one can
+    "Keep 0917 123 4567". Saved on the device at once
+    (`StudentEntity.parentPhone`, `MIGRATION_9_10`) and uploaded to
+    `admin_set_parent_phone` by `ParentPhoneSyncManager` (part of every
+    gate sync, same pending/synced/failed cycle as cards). The number lives
+    on the student's **parent account** on the server (`User.parent_id`),
+    so a student with no parent account gets a warning and the server
+    refuses the upload (shown in Students) until one is linked on the web -
+    the next student download that reports a parent account re-queues it.
+  - Students list: card number, parent number + sync state; three buttons
+    per student - Card (Replace / Deactivate; Replace opens the wizard at
+    the card step), Face (wizard at the face step, card step if there's no
+    card yet), Parent no. (wizard at the number step). Filter "No parent
+    no." lists who still gets no texts. Back from a wizard opened there
+    returns to Students.
   - Every card change goes to the server registry (pending until sent; a
     refusal shows its reason). The student download applies the server's
     cards (`rfid_managed: true`) but never overwrites a change on this
-    device that hasn't been sent.
+    device that hasn't been sent. Parent numbers work the same way
+    (`parent_phone_managed: true`, `has_parent_account`, `parent_phone`).
+- **Parent SMS** (Admin > Parent SMS, `ParentSmsScreen` +
+  `ParentSmsViewModel`): the wording of the text a parent gets on each
+  scan - one for Coming In, one for Going Out, per school, kept on the
+  server (it sends the texts), so this screen needs a connection. Default
+  is Filipino, from the user's own example: "Ang inyong anak na si
+  {student} ay pumasok sa paaralan ng {time} ({date})." / "... ay lumabas
+  ng paaralan ng ...". Placeholders {student} (required) {time} ("7:42
+  AM") {date} ("Sep 26, 2026") {code} {school}, inserted by chips at the
+  cursor. Live preview as an SMS bubble with a real student's name, a
+  character / SMS-part count (`SmsTemplate`, rendered exactly like the
+  server's `GateSmsTemplate::render` - pinned by `ParentSmsTest`), "Use
+  default". Also shows how many students have a parent number and whether
+  the platform's SMS switch is on (a superadmin setting on the web - no
+  texts go out while it's off).
 - **One face per student** - `FaceTemplateRepository.enroll` compares the
   new face with every other student's enrolled face in the school and
   refuses a match ("This face is already enrolled for <name> (<ID>)",
@@ -218,8 +252,8 @@ this device), the same pieces the old gate screen used.
     which replaces the old row. Old rows are kept, not deleted.
   - Liveness is unchanged: still `LivenessDetector`'s eye-open heuristic,
     so a good photo/video of the student can still pass the camera step.
-- Admin screens (Register Card & Face, Students, Gate Schedule, Face Settings, Audit
-  Log, Sync & Account, Change PIN) sit behind a **device PIN**
+- Admin screens (Register Card, Face & Number, Students, Parent SMS, Gate
+  Schedule, Face Settings, Audit Log, Sync & Account, Change PIN) sit behind a **device PIN**
   (`AdminPinManager`: salted PBKDF2 hash in Keystore-backed encrypted prefs,
   5 wrong tries -> 60s lockout, counted persistently). They relock when you
   return to the gate. The PIN screen is an access-code keypad (the user's
@@ -234,7 +268,7 @@ this device), the same pieces the old gate screen used.
   checks `role_id === 2`, so teachers and superadmins would only get 403s).
   The only in-app sign-in after that is the "forgot PIN" re-authentication,
   which skips the sync step.
-- Real Room migrations (`MIGRATION_6_7`, `MIGRATION_7_8`), not the
+- Real Room migrations (`MIGRATION_6_7` ... `MIGRATION_9_10`), not the
   destructive fallback - installed devices hold card assignments and face
   templates that exist nowhere else.
 - Face templates stay on the device that enrolled them (unchanged): each
@@ -345,7 +379,13 @@ never the reliable path.
   duplicate upload (both return earlier). Resolves the parent via
   `User.parent_id` (the same column `BehaviorController` already uses for
   its own parent notifications), then both pushes the free in-app/Messenger
-  notification and dispatches the SMS.
+  notification and dispatches the SMS. The text is the school's own
+  wording (`GateSmsTemplate`, table `gate_sms_templates`, one row per
+  school, null = default), edited in the app's Admin > Parent SMS via
+  `admin_gate_sms_templates` / `admin_gate_sms_templates_update` (admin,
+  own school; each message must contain {student}; the show response also
+  carries `sms_enabled`, the platform switch). Times go out as "7:42 AM",
+  dates as "Sep 26, 2026".
 - **`users.phone` is a new real column** - today a phone only exists ad hoc
   inside `user_information` JSON from one admission flow, so almost no
   parent has one anywhere queryable. New migration adds the column and
@@ -355,7 +395,13 @@ never the reliable path.
   detail sheet (`gate-students.php/.js`) and added a "Parent contact" card -
   shows/edits the phone on file, or says plainly there's no linked parent
   account when `parent_id` is empty. New endpoint `admin_set_parent_phone`
-  writes to the *parent's* phone column, never the student's.
+  writes to the *parent's* phone column, never the student's. It stores
+  one form, `09XXXXXXXXX` (`App\Support\PhMobileNumber`, also used by the
+  SMS job), and refuses (422) anything that isn't a PH mobile - the old
+  job-only check let landline-shaped numbers through. The app's Register
+  wizard (step 4) uses the same endpoint, and `admin_gate_students` now
+  sends each student's `has_parent_account` + `parent_phone` so the app
+  shows them offline.
 - New web page `sms-gateway-settings.php/.js` (superadmin, same layout as
   `messenger-settings.php`): API key, optional sender name (Semaphore caps
   it at 11 characters, needs their pre-approval), an on/off switch, and a
@@ -1731,6 +1777,6 @@ git branch -d feature/your-feature
 
 ---
 
-**Last Updated**: 2026-09-25  
+**Last Updated**: 2026-09-26  
 **Created by**: Claude Code  
 **Status**: Active Development

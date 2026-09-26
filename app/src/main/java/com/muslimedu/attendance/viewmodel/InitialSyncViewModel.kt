@@ -85,6 +85,8 @@ class InitialSyncViewModel @Inject constructor(
                     if (outcome.rejected > 0) append(", ${outcome.rejected} rejected")
                     if (outcome.cardsSynced > 0) append(", ${outcome.cardsSynced} card(s) registered")
                     if (outcome.cardsFailed > 0) append(", ${outcome.cardsFailed} card(s) refused - see Admin > Students")
+                    if (outcome.phonesSynced > 0) append(", ${outcome.phonesSynced} parent number(s) saved")
+                    if (outcome.phonesFailed > 0) append(", ${outcome.phonesFailed} parent number(s) refused - see Admin > Students")
                 }
                 when {
                     outcome.stoppedReason == null -> SyncStepState(SyncStepStatus.Done, summary)
