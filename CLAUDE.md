@@ -992,6 +992,43 @@ the RFID gate "like other features". Delivered as `rfid-access-update.zip`
   needed a stand-in `config/roles.php` (not in the supplied source, not
   shipped) for the `role:superadmin` routes to run.
 
+### Offline web for every role (web only - not in this repo)
+
+The user asked for the web app's offline feature to work for all role
+accounts, not just admin. Delivered as `offline-all-roles-update.zip`
+(13 files in `v2/`, no server or database change). What made it admin-only,
+and the fix:
+- `sync-status.js` (Offline & Sync) was guarded `['admin','teacher']` and
+  linked only from the admin dashboard; uploading queued writes is manual
+  and lived only there, so other roles' offline changes could never leave
+  the device. Now `guardDashboard(null)`, back link `dashboardUrlForRole`,
+  an Offline & Sync tile on every role dashboard (+ placeholder links,
+  private menu, Account Settings row), and `pwa.js`'s top bar has
+  **Upload now** (online + pending, signed-in pages only) / **Details**
+  (offline + pending). Still never uploads by itself.
+- `offline-data.js` read detection: any unrecognised read counted as a
+  write, so offline it was queued and the page got a fake `{queued:true}`
+  (every role's `academic_locale_bundle`, notification badge, feeds,
+  polls, Quran tracker, scholarship search). New suffixes `_get _history
+  _feed _poll _search _queue _bundle _unread_count _mine _my_children
+  _form_config _translations _packages _templates _today _stats` + an
+  exact list, checked against all 696 routes (no write matches;
+  `_student(s)`/`_members` deliberately not suffixes). More NEVER entries
+  (forgot_password, message_thread_start, guidance_inquiry_start/claim,
+  messenger links, test email/SMS, exports).
+- Download Now: `COMMON_DOWNLOAD` + `FULL_DOWNLOAD_BY_ROLE` for every role,
+  each entry exactly what that role's pages send (recorded by crawling
+  every role's menu in Chromium - the cache key is path + body).
+- `flush()` keeps the change and stops on 401/419/429/5xx (used to drop
+  it, so an expired session lost everything done offline).
+- `sw.php` builds `PRECACHE` from the folder (pages, scripts, assets;
+  skips sw.*, "(1)" copies, non-page .php). The hand list in sw.js had 146
+  files; ~110 pages (student/teacher/Quran/scholarship/chat) stopped
+  working offline after every deploy.
+- Verified: 150 Chromium checks with the real service worker for student,
+  teacher, cashier, registrar, alumni, parent, superadmin
+  (`e2e/offline-roles.js`); web door 18 and Gate Reports 46 still pass.
+
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
   teal - used for the logo, gradients, big icons. It's only ~3.4:1 on white,
