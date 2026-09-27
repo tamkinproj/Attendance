@@ -584,6 +584,18 @@ per day, also what stops two phones' reports double-texting),
   draft holiday ignored, no-school mark, web states); the SQL on MariaDB
   (run twice); the page in headless Chromium in every banner state. Not
   run in the full Laravel app, with a real queue, or a real SMS provider.
+- "Server Error" on the app's Not arrived card (user's live server): the
+  later full `routes/api.php` copies (security, reports) list the absence
+  routes, but the code came only with `gate-absence-update.zip` /
+  `face-sharing-update.zip` - an older `AttendanceApi.php` or a missing
+  `GateAbsenceService.php` gives exactly "Server Error" with APP_DEBUG off
+  (reproduced; a missing table gives a clear 501 instead). Fixed by
+  `gate-server-catchup.zip`: the newest copy of all 37 gate server files
+  (byte-identical to the fully tested test app) + `gate-all-in-one.sql`,
+  one re-runnable script for every gate table/column (columns added via
+  information_schema checks + prepared statements, works on MySQL and
+  MariaDB; users.phone backfill only fills empty numbers). Tested on an
+  empty, a half-updated and a fully updated database.
 - Known limits: one cutoff per school (no per-section/afternoon shift);
   a face-failed scan still waiting on a phone isn't in `pending_uploads`
   (only attendance is), so that student could be texted; nothing is
