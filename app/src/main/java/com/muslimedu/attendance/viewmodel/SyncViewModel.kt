@@ -19,6 +19,7 @@ import com.muslimedu.attendance.sync.GateSyncScheduler
 import com.muslimedu.attendance.util.GateBackupCodec
 import com.muslimedu.attendance.sync.GateSyncOutcome
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -127,6 +128,15 @@ class SyncViewModel @Inject constructor(
     private val _isReporting = MutableStateFlow(false)
     val isReporting: StateFlow<Boolean> = _isReporting.asStateFlow()
 
+    private val _reportResult = MutableStateFlow<ReportNowResult?>(null)
+
+    /**
+     * What the last "Report now" tap did, shown under the button. The card's
+     * "Reported just now" line alone doesn't change when a report succeeds
+     * seconds after the previous one, so a tap looked like it did nothing.
+     */
+    val reportResult: StateFlow<ReportNowResult?> = _reportResult.asStateFlow()
+
     fun refresh() {
         viewModelScope.launch { _studentCount.value = studentRepository.getAll().size }
         viewModelScope.launch { _deviceNow.value = runCatching { deviceHealthReporter.snapshot() }.getOrNull() }
@@ -136,10 +146,19 @@ class SyncViewModel @Inject constructor(
         if (_isReporting.value) return
         viewModelScope.launch {
             _isReporting.value = true
-            if (deviceHealthReporter.report(force = true) == DeviceHealthResult.NotSignedIn) {
-                _uploadMessage.value = "Sign in as a school admin to report this device."
-            }
+            _reportResult.value = null
+            val startedAt = System.currentTimeMillis()
+            val result = deviceHealthReporter.report(force = true)
             _deviceNow.value = runCatching { deviceHealthReporter.snapshot() }.getOrNull()
+            // A report can take a fraction of a second - keep the spinner up
+            // long enough to be seen, so the tap visibly did something.
+            val elapsed = System.currentTimeMillis() - startedAt
+            if (elapsed < MIN_REPORT_SPINNER_MILLIS) delay(MIN_REPORT_SPINNER_MILLIS - elapsed)
+            _reportResult.value = when (result) {
+                DeviceHealthResult.Sent, DeviceHealthResult.Skipped -> ReportNowResult(ok = true, at = System.currentTimeMillis(), message = null)
+                DeviceHealthResult.NotSignedIn -> ReportNowResult(ok = false, at = System.currentTimeMillis(), message = "Sign in as a school admin to report this device.")
+                is DeviceHealthResult.NotSent -> ReportNowResult(ok = false, at = System.currentTimeMillis(), message = result.reason)
+            }
             _isReporting.value = false
         }
     }
@@ -193,3 +212,9 @@ class SyncViewModel @Inject constructor(
         }
     }
 }
+
+/** The outcome of one "Report now" tap: sent (and when), or why not. */
+data class ReportNowResult(val ok: Boolean, val at: Long, val message: String?)
+
+/** The shortest time the "Report now" spinner shows. */
+private const val MIN_REPORT_SPINNER_MILLIS = 700L

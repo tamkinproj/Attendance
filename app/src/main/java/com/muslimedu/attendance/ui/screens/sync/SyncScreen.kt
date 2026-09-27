@@ -16,6 +16,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.FileDownload
@@ -63,6 +65,7 @@ import com.muslimedu.attendance.ui.theme.BrandPrimary
 import com.muslimedu.attendance.ui.theme.BrandPrimaryContainer
 import com.muslimedu.attendance.util.DeviceHealth
 import com.muslimedu.attendance.util.GateBackupCodec
+import com.muslimedu.attendance.viewmodel.ReportNowResult
 import com.muslimedu.attendance.viewmodel.SyncViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -87,6 +90,7 @@ fun SyncScreen(
     val deviceHealth by viewModel.deviceHealth.collectAsState()
     val deviceNow by viewModel.deviceNow.collectAsState()
     val isReporting by viewModel.isReporting.collectAsState()
+    val reportResult by viewModel.reportResult.collectAsState()
     val backupBusy by viewModel.backupBusy.collectAsState()
     val backupMessage by viewModel.backupMessage.collectAsState()
     val backupToShare by viewModel.backupToShare.collectAsState()
@@ -191,7 +195,7 @@ fun SyncScreen(
 
         item {
             SectionHeader("This gate device", modifier = Modifier.padding(top = 24.dp))
-            DeviceHealthCard(deviceHealth, deviceNow, isReporting, onReport = viewModel::reportDeviceHealth)
+            DeviceHealthCard(deviceHealth, deviceNow, isReporting, reportResult, onReport = viewModel::reportDeviceHealth)
         }
 
         item {
@@ -278,6 +282,7 @@ private fun DeviceHealthCard(
     report: DeviceHealthReport?,
     now: GateDeviceHeartbeatRequest?,
     isReporting: Boolean,
+    reportResult: ReportNowResult?,
     onReport: () -> Unit,
 ) {
     val clock = DeviceHealth.clockWarning(report?.clockSkewSeconds)
@@ -333,8 +338,30 @@ private fun DeviceHealthCard(
             OutlinedButton(onClick = onReport, enabled = !isReporting, modifier = Modifier.padding(top = 12.dp)) {
                 if (isReporting) {
                     CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text("Reporting…", modifier = Modifier.padding(start = 8.dp))
                 } else {
                     Text("Report now")
+                }
+            }
+            // The result of the last tap, with the time to the second, so
+            // every tap visibly changes something.
+            if (!isReporting && reportResult != null) {
+                val time = java.text.SimpleDateFormat("h:mm:ss a", java.util.Locale.getDefault())
+                    .format(java.util.Date(reportResult.at))
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+                    Icon(
+                        if (reportResult.ok) Icons.Filled.CheckCircle else Icons.Filled.ErrorOutline,
+                        contentDescription = null,
+                        tint = if (reportResult.ok) BrandPrimary else AccentRed,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Text(
+                        if (reportResult.ok) "Sent to the school server at $time"
+                        else "Not sent ($time): ${reportResult.message ?: "unknown error"}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (reportResult.ok) BrandPrimary else AccentRed,
+                        modifier = Modifier.padding(start = 6.dp),
+                    )
                 }
             }
         }
