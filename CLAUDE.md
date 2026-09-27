@@ -389,7 +389,11 @@ this device), the same pieces the old gate screen used.
 - Sign-in is limited to role `admin` (the gate endpoints' `requireAdmin()`
   checks `role_id === 2`, so teachers and superadmins would only get 403s).
   The only in-app sign-in after that is the "forgot PIN" re-authentication,
-  which skips the sync step.
+  which skips the sync step. The web also decides who may use the gate
+  (`GateAccess`, see "Gate access switches" below): sign-in is refused, and
+  a restored session signed out at app start, when the school's `rfidGate`
+  is off or a co-admin's `gateApp` is off - with the reason on the sign-in
+  screen. Scans already on the phone are kept.
 - Real Room migrations (`MIGRATION_6_7` ... `MIGRATION_12_13`), not the
   destructive fallback - installed devices hold card assignments and face
   templates that exist nowhere else.
@@ -934,6 +938,59 @@ data every other gate page already reads (no new table, no migration).
   orientations, the offline-cached fallback, no sideways scroll at phone
   width). Not run against the real Laravel app or a real phone-sized
   browser.
+
+### Gate access switches (Laravel + web + app)
+
+The user asked for the superadmin and the main admin to manage who can use
+the RFID gate "like other features". Delivered as `rfid-access-update.zip`
+(only new/changed files; needs the reports/catch-up `routes/api.php`).
+- **SuperAdmin, per school**: a new school feature `rfidGate`
+  (`School::GATE_FEATURES`), in Schools > Manage Features under "Gate
+  Attendance (RFID + Face)". Default = **follows `attendance`** (a
+  SuperAdmin override wins, then a package that names it), so nothing
+  changed for any school when it shipped - a school with Attendance off
+  never saw the gate tiles either. A school list chip shows "RFID Gate
+  Attendance (off)".
+- **Main (primary) admin, for co-admins**: four keys added to
+  `School::ROLE_FEATURES['admin']` - `gateApp` (gate phones: sign-in and
+  everything they upload), `gateStudents`, `gateDevices`, `gateReports` -
+  in Dashboard Cards > Co-Admins, labelled Allowed / No access. Hidden
+  there while the school's `rfidGate` is off. The tiles already went
+  through `onAdmin()`, so they hide by themselves.
+- **Enforced on the server**, unlike the other role cards (which are menu
+  only): `EnsureGateAccess` middleware on every gate route in
+  `routes/api.php` (`$gate . ':gateApp'` etc.; the card and parent-number
+  routes take `gateApp,gateStudents` - either is enough - because both the
+  app and Gate Students use them; teacher routes check only the school;
+  `superadmin_gate_devices` is not wrapped). 403 with `reason`
+  `gate_feature_off` / `gate_coadmin_off` and a sentence the app and the
+  pages show as is. The primary admin, teachers and other roles skip the
+  co-admin check.
+- Web: `admin-dashboard.js` gate tiles on `rfidGate` (falls back to
+  `attendance` on a server that doesn't send it), `teacher-attendance.js`
+  hides the Gate Records method while it's off, `superadmin-schools.js`
+  shows the switch only when the server knows the key.
+- App: `UserDto` gained `is_primary_admin`, `school_features`,
+  `role_features` (raw `JsonElement` - PHP sends an empty array as `[]`,
+  which Gson can't read as a Map); `GateAccess.problem()` checked in
+  `AuthRepository.login` and `validateSession`. Missing keys (older
+  server) = allowed. `GateAccessTest`.
+- **Found while testing**: nothing ever created
+  `schools.role_feature_overrides` (read/written by School.php and
+  RoleFeatureController, no migration in the supplied source), so on such
+  a database every Dashboard Cards switch fails with "Could not save that
+  change". Added migration `2026_09_27_000001` and
+  `database/sql/gate-access.sql` (adds it, `feature_overrides` and
+  `users.is_primary_admin` when missing; a school with admins but no main
+  admin gets its lowest-id admin as main admin, the original migration's
+  rule; re-runnable).
+- Verified: 69 HTTP checks (`accesstest.sh`: every gate route for main
+  admin / co-admin / teacher, each switch, /api and /web, messages,
+  superadmin switch + reset + following Attendance), 34 Chromium checks
+  (`e2e/gate-access.js`), the SQL on an empty and an existing database
+  twice, and the Gate Reports 30 + 46 checks still pass. The test copy
+  needed a stand-in `config/roles.php` (not in the supplied source, not
+  shipped) for the `role:superadmin` routes to run.
 
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact

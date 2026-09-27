@@ -1,5 +1,6 @@
 package com.muslimedu.attendance.data.remote.dto
 
+import com.google.gson.JsonElement
 import com.google.gson.annotations.SerializedName
 
 data class LoginRequest(
@@ -38,6 +39,13 @@ data class UserDto(
     @SerializedName("school_id") val schoolId: Int,
     @SerializedName("code") val code: String?,
     @SerializedName("photo") val photo: String?,
+    // Who may use the RFID gate - read by GateAccess. Raw JSON rather than
+    // maps: PHP sends an empty array as `[]`, which Gson can't read as a Map,
+    // and a parse error here would break sign-in. All three are absent on
+    // a server from before the gate access switches (= allowed).
+    @SerializedName("is_primary_admin") val isPrimaryAdmin: Boolean? = null,
+    @SerializedName("school_features") val schoolFeatures: JsonElement? = null,
+    @SerializedName("role_features") val roleFeatures: JsonElement? = null,
 )
 
 /**
