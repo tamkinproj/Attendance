@@ -28,11 +28,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.muslimedu.attendance.data.remote.dto.UserDto
+import com.muslimedu.attendance.ui.kiosk.KioskController
+import com.muslimedu.attendance.ui.kiosk.NoOpKioskController
 import com.muslimedu.attendance.ui.screens.SplashScreen
 import com.muslimedu.attendance.ui.screens.admin.AdminPinScreen
 import com.muslimedu.attendance.ui.screens.admin.AuditLogScreen
 import com.muslimedu.attendance.ui.screens.admin.GateAdminScreen
 import com.muslimedu.attendance.ui.screens.admin.GateScheduleScreen
+import com.muslimedu.attendance.ui.screens.admin.KioskModeScreen
 import com.muslimedu.attendance.ui.screens.admin.ParentSmsScreen
 import com.muslimedu.attendance.ui.screens.admin.SettingsScreen
 import com.muslimedu.attendance.ui.screens.admin.StudentListScreen
@@ -47,6 +50,7 @@ import com.muslimedu.attendance.viewmodel.AdminPinViewModel
 import com.muslimedu.attendance.viewmodel.AuthState
 import com.muslimedu.attendance.viewmodel.AuthViewModel
 import com.muslimedu.attendance.viewmodel.GateDirection
+import com.muslimedu.attendance.viewmodel.KioskModeViewModel
 import com.muslimedu.attendance.viewmodel.RegistrationStart
 import com.muslimedu.attendance.viewmodel.RegistrationTarget
 
@@ -64,7 +68,12 @@ import com.muslimedu.attendance.viewmodel.RegistrationTarget
  * on the web app. The code is kept in the repo, just not wired in here.
  */
 @Composable
-fun AppRoot(authViewModel: AuthViewModel = hiltViewModel()) {
+fun AppRoot(
+    authViewModel: AuthViewModel = hiltViewModel(),
+    /** True only on a tablet ([com.muslimedu.attendance.util.isTabletFormFactor]) - kiosk mode has no effect on a phone. */
+    isTabletDevice: Boolean = false,
+    kioskController: KioskController = NoOpKioskController,
+) {
     val authState by authViewModel.authState.collectAsState()
     val syncPending by authViewModel.postLoginSyncPending.collectAsState()
 
@@ -72,7 +81,7 @@ fun AppRoot(authViewModel: AuthViewModel = hiltViewModel()) {
         AuthState.CheckingSession -> SplashScreen()
         AuthState.LoggedOut -> LoginScreen(viewModel = authViewModel)
         is AuthState.LoggedIn ->
-            if (syncPending) InitialSyncScreen(user = state.user) else GateApp(state.user, authViewModel)
+            if (syncPending) InitialSyncScreen(user = state.user) else GateApp(state.user, authViewModel, isTabletDevice, kioskController)
     }
 }
 
@@ -96,6 +105,7 @@ private enum class Screen(val title: String, val requiresUnlock: Boolean) {
     AuditLog("Audit Log", true),
     ChangePin("Change PIN", true),
     Sync("Sync & Account", true),
+    KioskMode("Kiosk Mode", true),
     ResetPinLogin("Reset PIN", false),
 }
 
@@ -106,9 +116,20 @@ private enum class Screen(val title: String, val requiresUnlock: Boolean) {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
+private fun GateApp(user: UserDto, authViewModel: AuthViewModel, isTabletDevice: Boolean, kioskController: KioskController) {
     val lastLoginAt by authViewModel.lastLoginAt.collectAsState()
     val pinViewModel: AdminPinViewModel = hiltViewModel()
+    val kioskViewModel: KioskModeViewModel = hiltViewModel()
+    val kioskModeEnabled by kioskViewModel.kioskModeEnabled.collectAsState()
+    // Kiosk mode is engaged (screen pinned, forced landscape + dark, no way
+    // out through Back) whenever the setting is on AND this is a tablet -
+    // see DeviceSettings.kioskModeEnabled's doc comment for why the setting
+    // itself doesn't check the device. MainActivity reads the same two
+    // values independently to drive the actual Activity APIs
+    // (startLockTask/requestedOrientation/forced dark theme); this copy is
+    // only for what's rendered here (the back-button swallow below, and the
+    // kiosk look passed into the gate screens).
+    val kioskActive = isTabletDevice && kioskModeEnabled
 
     // Saveable: if the activity is ever recreated (rotation, theme change,
     // the system restoring the app), the admin stays on the screen they
@@ -172,6 +193,16 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
     val ownsChrome = shown == Screen.Gate || shown == Screen.GateIn || shown == Screen.GateOut || shown == Screen.Register
 
     BackHandler(enabled = !ownsChrome) { navigate(parentOf(shown)) }
+    // GateIn/GateOut already handle Back themselves (GateScanScreen's own
+    // BackHandler, always on, asks before leaving unsynced attendance) -
+    // that's untouched by kiosk mode, on purpose: it never exits the app
+    // either way. The gap kiosk mode actually closes is Screen.Gate and
+    // Screen.Register, which own their chrome but register no BackHandler
+    // of their own - outside kiosk that's fine (there's nothing after them
+    // to protect), but it means Back on the idle gate dashboard normally
+    // finishes the Activity, exactly what a student touching Back at a
+    // kiosk stand must not do. Swallows the event; does nothing else.
+    BackHandler(enabled = kioskActive && (shown == Screen.Gate || shown == Screen.Register)) {}
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -201,6 +232,7 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
             when (shown) {
                 Screen.Gate -> GateDashboardScreen(
                     adminName = user.name,
+                    kiosk = kioskActive,
                     onAdmin = { navigate(if (adminUnlocked) Screen.AdminHome else Screen.AdminPin) },
                     onOpen = { direction -> navigate(if (direction == GateDirection.IN) Screen.GateIn else Screen.GateOut) },
                     onHistory = { navigate(Screen.GateHistory) },
@@ -214,8 +246,8 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
                         }
                     },
                 )
-                Screen.GateIn -> GateScanScreen(direction = GateDirection.IN, onClose = { navigate(Screen.Gate) })
-                Screen.GateOut -> GateScanScreen(direction = GateDirection.OUT, onClose = { navigate(Screen.Gate) })
+                Screen.GateIn -> GateScanScreen(direction = GateDirection.IN, kiosk = kioskActive, onClose = { navigate(Screen.Gate) })
+                Screen.GateOut -> GateScanScreen(direction = GateDirection.OUT, kiosk = kioskActive, onClose = { navigate(Screen.Gate) })
                 Screen.GateHistory -> GateHistoryScreen()
                 Screen.AdminPin -> AdminPinScreen(
                     onUnlocked = {
@@ -248,6 +280,7 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
                     onSettings = { navigate(Screen.FaceSettings) },
                     onAuditLog = { navigate(Screen.AuditLog) },
                     onChangePin = { navigate(Screen.ChangePin) },
+                    onKioskMode = { navigate(Screen.KioskMode) },
                 )
                 Screen.Students -> StudentListScreen(
                     onRegisterFace = { student -> openRegistration(RegistrationTarget(student, RegistrationStart.FACE)) },
@@ -263,6 +296,7 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
                 Screen.GateSchedule -> GateScheduleScreen(onSaved = { navigate(parentOf(Screen.GateSchedule)) })
                 Screen.FaceSettings -> SettingsScreen()
                 Screen.AuditLog -> AuditLogScreen()
+                Screen.KioskMode -> KioskModeScreen(isTabletDevice = isTabletDevice, kioskController = kioskController, viewModel = kioskViewModel)
                 Screen.ParentSms -> ParentSmsScreen()
                 Screen.Sync -> SyncScreen(user = user, onLogout = authViewModel::logout)
                 Screen.ResetPinLogin -> LoginScreen(

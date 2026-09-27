@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Sms
+import androidx.compose.material.icons.filled.Tablet
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -53,6 +54,7 @@ fun GateAdminScreen(
     onSettings: () -> Unit,
     onAuditLog: () -> Unit,
     onChangePin: () -> Unit,
+    onKioskMode: () -> Unit,
 ) {
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -91,6 +93,7 @@ fun GateAdminScreen(
                 AdminAction(Icons.Filled.Tune, "Face Settings", AccentSlate, onSettings),
                 AdminAction(Icons.Filled.History, "Audit Log", AccentGold, onAuditLog),
                 AdminAction(Icons.Filled.Lock, "Change PIN", AccentRed, onChangePin),
+                AdminAction(Icons.Filled.Tablet, "Kiosk Mode", AccentSlate, onKioskMode),
             ),
         )
     }

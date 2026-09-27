@@ -159,11 +159,27 @@ class DeviceSettings @Inject constructor(
             prefs.edit().putLong(KEY_LAST_STUDENT_DOWNLOAD, value ?: 0L).apply()
         }
 
+    /**
+     * Kiosk mode - the tablet is mounted on a stand for students to scan
+     * themselves; see [com.muslimedu.attendance.ui.screens.admin.KioskModeScreen].
+     * Only takes effect on a tablet ([com.muslimedu.attendance.util.isTabletFormFactor])
+     * - the setting itself can still be flipped on a phone (e.g. to prepare
+     * a device before it's handed off), it just has no visible effect there.
+     */
+    private val _kioskModeEnabled = MutableStateFlow(prefs.getBoolean(KEY_KIOSK_MODE_ENABLED, false))
+    val kioskModeEnabled: StateFlow<Boolean> = _kioskModeEnabled.asStateFlow()
+
+    fun setKioskModeEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_KIOSK_MODE_ENABLED, enabled).apply()
+        _kioskModeEnabled.value = enabled
+    }
+
     companion object {
         const val UNBOUND_SCHOOL_ID = 0
         private const val PREFS_FILE_NAME = "device_settings"
         private const val KEY_SCHOOL_ID = "school_id"
         private const val KEY_LAST_STUDENT_DOWNLOAD = "last_student_download_at"
+        private const val KEY_KIOSK_MODE_ENABLED = "kiosk_mode_enabled"
         private const val KEY_POST_LOGIN_SYNC = "post_login_sync_pending"
         private const val KEY_GATE_SCANS_PER_DAY = "gate_scans_per_day"
         private const val KEY_GATE_IN_TIMES = "gate_in_times"

@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.muslimedu.attendance.rfid.ReaderStatus
 import com.muslimedu.attendance.ui.components.BrandLogo
+import com.muslimedu.attendance.ui.components.kioskPulse
 import com.muslimedu.attendance.ui.theme.AccentBlue
 import com.muslimedu.attendance.ui.theme.AccentGold
 import com.muslimedu.attendance.ui.theme.AccentRed
@@ -90,6 +91,7 @@ fun GateDashboardScreen(
     onOpen: (GateDirection) -> Unit,
     onHistory: () -> Unit,
     onSetUpSchedule: () -> Unit,
+    kiosk: Boolean = false,
     viewModel: GateDashboardViewModel = hiltViewModel(),
 ) {
     val today by viewModel.today.collectAsState()
@@ -128,7 +130,7 @@ fun GateDashboardScreen(
                     if (opensAt != null) {
                         LockedDirectionCard(direction, opensAt, Modifier.weight(1f))
                     } else {
-                        DirectionCard(direction, Modifier.weight(1f)) {
+                        DirectionCard(direction, Modifier.weight(1f), kiosk = kiosk) {
                             if (schedule == null) onSetUpSchedule() else onOpen(direction)
                         }
                     }
@@ -311,7 +313,7 @@ private fun StatDivider() {
 
 /** Soft tinted card per direction - the only way into scanning. */
 @Composable
-private fun DirectionCard(direction: GateDirection, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun DirectionCard(direction: GateDirection, modifier: Modifier = Modifier, kiosk: Boolean = false, onClick: () -> Unit) {
     val color = direction.color()
     val top = tint(color, 0.05f)
     val bottom = tint(color, 0.13f)
@@ -332,7 +334,9 @@ private fun DirectionCard(direction: GateDirection, modifier: Modifier = Modifie
                 .padding(18.dp),
         ) {
             Box(
-                modifier = Modifier.size(60.dp).background(color.copy(alpha = 0.14f), CircleShape),
+                modifier = Modifier.size(60.dp)
+                    .then(if (kiosk) Modifier.kioskPulse(color) else Modifier)
+                    .background(color.copy(alpha = 0.14f), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(directionIcon(direction.apiValue), contentDescription = null, tint = color, modifier = Modifier.size(30.dp))

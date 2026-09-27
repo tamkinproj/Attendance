@@ -70,6 +70,7 @@ import com.muslimedu.attendance.data.repository.GateScanCheck
 import com.muslimedu.attendance.rfid.ReaderStatus
 import com.muslimedu.attendance.ui.components.InitialsAvatar
 import com.muslimedu.attendance.ui.components.LiveFaceCaptureView
+import com.muslimedu.attendance.ui.components.kioskPulse
 import com.muslimedu.attendance.ui.theme.AccentGold
 import com.muslimedu.attendance.ui.theme.AccentRed
 import com.muslimedu.attendance.ui.theme.BrandPrimary
@@ -93,6 +94,7 @@ import java.time.LocalDate
 fun GateScanScreen(
     direction: GateDirection,
     onClose: () -> Unit,
+    kiosk: Boolean = false,
     viewModel: GateScanViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -137,7 +139,7 @@ fun GateScanScreen(
                 // (a tap closes it sooner).
                 when (current) {
                     GateScanState.Ready -> {
-                        ReadyCard(direction, accent, content)
+                        ReadyCard(direction, accent, content, kiosk)
                         SessionLog(session, content)
                     }
                     is GateScanState.FaceCheck -> Unit
@@ -249,14 +251,16 @@ private fun Header(
 }
 
 @Composable
-private fun ReadyCard(direction: GateDirection, accent: Color, modifier: Modifier) {
+private fun ReadyCard(direction: GateDirection, accent: Color, modifier: Modifier, kiosk: Boolean = false) {
     Card(modifier = modifier, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(vertical = 36.dp, horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Box(
-                modifier = Modifier.size(132.dp).background(accent.copy(alpha = 0.10f), CircleShape),
+                modifier = Modifier.size(132.dp)
+                    .then(if (kiosk) Modifier.kioskPulse(accent) else Modifier)
+                    .background(accent.copy(alpha = 0.10f), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 Box(

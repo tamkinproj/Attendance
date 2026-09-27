@@ -446,6 +446,92 @@ this device), the same pieces the old gate screen used.
   with no server. `GateBackupTest`: round trip, nothing readable without
   the password, wrong password, tampering, not-a-backup, newer version,
   fresh salt/IV per export. Audit log: `backup_exported` / `backup_restored`.
+- **Kiosk Mode** (the user asked for a tablet-on-a-stand mode: dark theme,
+  landscape, "game interactive... with animation", and hard to leave by
+  accident - "some student will touch or back button and it will leave the
+  app"). Admin > Kiosk Mode (`KioskModeScreen` + `KioskModeViewModel`), a
+  single switch persisted as `DeviceSettings.kioskModeEnabled` - **tablet
+  only** (the user's own follow-up: "kiosk mode only work on tablet then
+  it's landscape not portrait"). The setting itself can be flipped on a
+  phone (e.g. to prep a device before handing it off), it just has no
+  visible effect there - `isTabletFormFactor()` (`util/DeviceFormFactor.kt`)
+  checks `smallestScreenWidthDp >= 600`, the same line Android's own
+  `sw600dp` resource qualifier draws, so it doesn't flip with rotation.
+  Kiosk mode is engaged whenever both are true - `enabled && isTablet` -
+  for as long as the app is running, not scoped to one screen.
+  - **Dark theme, forced**: `MainActivity` passes `darkTheme = kioskEngaged`
+    to `MuslimEduAttendanceTheme`, overriding whatever the tablet's own
+    system setting says - the same deliberate dark palette Phase 7/9 built
+    from the brand teal (see "Brand theme" below), not a separate kiosk-only
+    palette.
+  - **Landscape, forced**: `MainActivity.requestedOrientation` is set to
+    `SCREEN_ORIENTATION_SENSOR_LANDSCAPE` on entering kiosk mode,
+    `SCREEN_ORIENTATION_UNSPECIFIED` on leaving - covers a cold start with
+    the setting already on, and the admin flipping it while the app is
+    running (a `LaunchedEffect` keyed on `isTablet && enabled`, read
+    straight from `DeviceSettings` in `setContent` since this has to happen
+    before any screen-specific ViewModel exists).
+  - **Can't leave, two layers**: (1) `startLockTask()` ("screen pinning") -
+    stops Home and Recents from working. Needs no device-owner/MDM
+    enrollment, any app can call it, but stock Android shows its own
+    one-time "Screen pinning" explanation the first time, and the *only*
+    way out without the admin PIN afterwards is the OS's own unpin gesture
+    (hold Back + Recents, or swipe up and hold on gesture nav) - a
+    phone-wide feature this app can't disable or replace, stated plainly on
+    the Kiosk Mode screen rather than oversold as unbreakable. A real
+    device-owner-provisioned kiosk wouldn't need that fallback gesture at
+    all, but that needs a factory-reset provisioning step (`adb shell dpm
+    set-device-owner` or an MDM/EMM enrolling the device) that no app can
+    do to itself - noted as a known limitation, not built. Wrapped in
+    `runCatching` (`MainActivity.enter()`/`exit()`, the `KioskController`
+    interface it implements): a device that refuses pinning still gets the
+    other two layers instead of crashing. (2) **Back button** - `AppRoot`
+    already lets `GateScanScreen` handle its own Back (asks before leaving
+    unsynced attendance, never exits the app either way, untouched here);
+    the actual gap kiosk mode closes is `Screen.Gate` and `Screen.Register`,
+    which own their chrome but registered no `BackHandler` at all - Back on
+    the idle gate dashboard normally finishes the Activity today, which is
+    exactly what a student touching Back at a kiosk stand must not do. A
+    second `BackHandler(enabled = kioskActive && (Gate || Register))` that
+    does nothing closes that gap, active only in kiosk mode - unchanged
+    everywhere else, including on a phone.
+  - **The one animated flourish** (`Modifier.kioskPulse()`,
+    `ui/components/KioskPulse.kt`): a soft ring that breathes outward and
+    fades behind the NFC icon on the gate dashboard's Coming In/Going Out
+    cards and the RFID screen's "tap your card" icon - a quiet "tap here"
+    invitation on an otherwise idle screen, not a status indicator (unlike
+    `FaceScanOverlay`'s mesh/progress, nothing reads the pulse's state).
+    Two rings a half-cycle apart (`InfiniteRepeatableSpec.initialStartOffset`)
+    so one is always fading in as the other fades out. Threaded through as
+    a plain `kiosk: Boolean` parameter on `GateDashboardScreen`/
+    `GateScanScreen` (default `false`) - existing behavior for every
+    non-kiosk call site (a phone, or a tablet with the setting off) is
+    completely unchanged; this was scoped down from a full parallel "kiosk"
+    screen (higher risk, unreviewable without a compiler - see below) to
+    one small, provably-additive visual change to the two screens a
+    student actually looks at.
+  - **"Try it on this tablet"**: `KioskModeScreen` has Pin now/Unpin buttons
+    that call `KioskController.enter()`/`exit()` directly, independent of
+    the persisted switch - screen pinning's first-time prompt (and whether
+    a Settings toggle needs turning on first) genuinely varies by tablet/
+    OEM, so the admin can try it once on the real device before relying on
+    it at the stand, without touching the setting other students would see.
+  - Audit log: `kiosk_mode_set` (`AuditLogger.ACTION_KIOSK_MODE_SET`), "on"/
+    "off", logged from `KioskModeViewModel`.
+  - `util/DeviceFormFactor.kt` splits the tablet check into a pure function
+    (`isTabletFormFactor(smallestScreenWidthDp: Int)`, covered by
+    `DeviceFormFactorTest`) and a one-line Context-reading wrapper, the same
+    "pure logic tested, Android glue reviewed by hand" split this project's
+    other tests already use (`GateScheduleTest`, `FaceAnglesTest`, ...).
+  - **Not verified on a device, same reason as the rest of this project's
+    UI work** (this sandbox can't resolve the Android Gradle Plugin - see
+    "Not verified by a local build" under Phase 7/9) - reviewed by hand
+    instead (import correctness, brace/paren balance, matching the
+    documented `startLockTask`/`requestedOrientation`/`InfiniteRepeatableSpec`
+    API shapes). Screen pinning in particular is worth trying on the actual
+    kiosk tablet before relying on it (see "Try it on this tablet" above) -
+    OEM skins are known to handle the first-time pinning prompt differently
+    from stock Android.
 
 ### Backend + web changes (Laravel - not in this repo)
 The user supplied their Laravel source (routes, app, database) and web
