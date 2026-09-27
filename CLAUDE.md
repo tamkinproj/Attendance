@@ -670,6 +670,28 @@ update). The phone and gate apps keep `/api` + tokens.
   dashboard via /web only, JSON + multipart saves, stale CSRF recovery,
   old-token cleanup, offline queue replay, sign-out), public forgot-
   password and admin sign-in. Not tested on the real server/.htaccess.
+- **429 "The server returned an error (429)" fix** (`rate-limit-fix.zip`,
+  the user hit it on manhaje.com/v2/ browsing alone). Not load - Laravel's
+  per-account limit (120/min) used up by two things, measured on the test
+  copy: (1) `runAdminSetupGate` re-ran the 13-call setup checklist on every
+  admin page even when cached complete, and the admin dashboard's ring
+  (`fetchSetupChecklistProgress`) ran the same 13 again - 118 of 146
+  requests over 7 page views; (2) gate phones sign in with the admin
+  account, so their uploads shared the browser's bucket (same limiter
+  name + `user:ID` key). Fix: `RouteServiceProvider` gives `/web` its own
+  limiter `webapp` (signed in 600/min, signed out 120/min per IP - a
+  separate count from `/api`), `api` signed in 300/min (signed out 120);
+  login keeps `throttle:6,1`. `dashboard.js`: a complete setup is re-checked
+  at most every 30 min (`SETUP_RECHECK_MS`, timestamp
+  `muslimedu_admin_setup_gate_<id>_checked_at`; incomplete setups are still
+  checked every page), the ring reuses the guard's answer
+  (`setupKnownComplete` / `setupLiveCheck`); 7 page views now 42 requests.
+  A 429 no longer dead-ends: the guard shows "Continuing in N s" from
+  `Retry-After` and retries by itself (3 times max), `authedPost` waits out
+  a <= 10 s limit once, longer ones give a plain message. Needs
+  `php artisan optimize:clear` (a cached route list keeps `throttle:api`).
+  Checked: 7 HTTP limit checks, 13 Chromium checks (`e2e/rate-limit.js`),
+  the web door's 18 and Gate Reports' 46 still pass.
 
 ### Gate SMS notifications for parents (Laravel - not in this repo)
 
