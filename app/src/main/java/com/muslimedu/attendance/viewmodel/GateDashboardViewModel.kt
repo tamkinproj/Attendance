@@ -9,6 +9,7 @@ import com.muslimedu.attendance.data.repository.GateScheduleConfig
 import com.muslimedu.attendance.rfid.RfidManager
 import com.muslimedu.attendance.sync.GateSyncManager
 import com.muslimedu.attendance.sync.GateSyncOutcome
+import com.muslimedu.attendance.util.DeviceHealth
 import com.muslimedu.attendance.util.NetworkMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
@@ -23,8 +24,8 @@ import kotlinx.coroutines.launch
 import java.time.LocalTime
 import javax.inject.Inject
 
-/** Today's face-confirmed attendance at this gate, by each student's latest direction. */
-data class GateTodayStats(val onCampus: Int = 0, val left: Int = 0, val recorded: Int = 0, val failed: Int = 0)
+/** Today's face-confirmed attendance at this gate, by each student's latest direction. [late]: late Coming Ins. */
+data class GateTodayStats(val onCampus: Int = 0, val left: Int = 0, val recorded: Int = 0, val failed: Int = 0, val late: Int = 0)
 
 /**
  * The gate's home: choose Coming In or Going Out, see what's been recorded
@@ -67,6 +68,14 @@ class GateDashboardViewModel @Inject constructor(
     val lastSyncedAt: StateFlow<Long?> = gateAttendanceRepository.observeLastSyncedAt()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    /**
+     * "This phone's clock is 12 min fast" when the server's last device-health
+     * check found it off - scans are stamped with this clock.
+     */
+    val clockWarning: StateFlow<String?> = deviceSettings.deviceHealth
+        .map { DeviceHealth.clockWarning(it?.clockSkewSeconds) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     val isSyncing: StateFlow<Boolean> = gateSyncManager.isSyncing
     val isOnline: StateFlow<Boolean> = networkMonitor.isOnline
     val readerStatus = rfidManager.status
@@ -104,6 +113,7 @@ class GateDashboardViewModel @Inject constructor(
             left = latestByStudent.count { it.value == GateScanEntity.DIRECTION_OUT },
             recorded = recorded.size,
             failed = scans.size - recorded.size,
+            late = recorded.count { it.late },
         )
     }
 

@@ -65,6 +65,10 @@ internal fun syncLabel(scan: GateScanEntity, isSyncing: Boolean): Pair<String, C
     else -> "Pending Sync" to AccentGold
 }
 
+/** "Late 22 min" - or null when the scan wasn't late. */
+internal fun lateLabel(scan: GateScanEntity): String? =
+    if (scan.late) "Late" + (scan.minutesLate?.let { " $it min" } ?: "") else null
+
 /** A small "RFID ✓" / "Face ✗" mark. */
 @Composable
 internal fun CheckMark(label: String, ok: Boolean, modifier: Modifier = Modifier) {
@@ -137,6 +141,7 @@ internal fun GateRecordRow(scan: GateScanEntity, isSyncing: Boolean, showDate: B
                 }
                 Row(modifier = Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (recorded) {
+                        lateLabel(scan)?.let { SmallChip(it, AccentGold, Modifier.padding(end = 8.dp)) }
                         val (label, color) = syncLabel(scan, isSyncing)
                         SmallChip(label, color)
                     } else {

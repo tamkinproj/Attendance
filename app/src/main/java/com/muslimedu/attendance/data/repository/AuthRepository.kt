@@ -51,6 +51,10 @@ class AuthRepository @Inject constructor(
             !deviceBinding.canUse(user.schoolId) ->
                 // Checked before the token is saved, same as the role check.
                 Result.failure(Exception(deviceBinding.mismatchMessage()))
+            GateAccess.problem(user) != null ->
+                // Gate switched off for the school, or for co-admins - same:
+                // no token saved.
+                Result.failure(Exception(GateAccess.problem(user)))
             else -> {
                 tokenManager.saveToken(token)
                 tokenManager.saveUser(user)
@@ -68,7 +72,9 @@ class AuthRepository @Inject constructor(
      * Re-validates a stored token against `/me`. Clears it if the server
      * rejects it, or if the account's role isn't one this app allows -
      * covers a token saved by an older build before this restriction
-     * existed, or a role change on the backend since the last login.
+     * existed, or a role change on the backend since the last login - or
+     * if the gate was switched off for the school or for co-admins
+     * ([GateAccess]).
      */
     suspend fun validateSession(): Result<UserDto> {
         if (!hasStoredToken()) return Result.failure(Exception("Not logged in"))
@@ -87,6 +93,13 @@ class AuthRepository @Inject constructor(
                 !deviceBinding.canUse(user.schoolId) -> {
                     tokenManager.clearToken()
                     Result.failure(Exception(deviceBinding.mismatchMessage()))
+                }
+                // Access taken away on the web since the last sign-in: sign
+                // out with the reason. Scans stay on the device and upload
+                // after a permitted admin signs in.
+                GateAccess.problem(user) != null -> {
+                    tokenManager.clearToken()
+                    Result.failure(Exception(GateAccess.problem(user)))
                 }
                 else -> {
                     // Covers an install from before offline mode existed: a

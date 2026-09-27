@@ -65,13 +65,15 @@ class MobileFaceNetRecognizer @Inject constructor(
     override suspend fun enrollFace(bitmap: Bitmap): FaceTemplate? {
         val face = detectFirstFace(bitmap) ?: return null
         val embedding = embed(bitmap, face) ?: return null
-        return FaceTemplate(embedding = embedding, livenessScore = LivenessDetector.score(face))
+        return FaceTemplate(embedding = embedding, livenessScore = LivenessDetector.score(face), yaw = face.headEulerAngleY)
     }
 
-    override suspend fun verifyFace(liveFrame: Bitmap, storedTemplate: FaceTemplate): Float? {
+    /** One detection and one model run for the live frame, then the best score over every enrolled angle. */
+    override suspend fun verifyFace(liveFrame: Bitmap, storedTemplates: List<FaceTemplate>): Float? {
+        if (storedTemplates.isEmpty()) return null
         val face = detectFirstFace(liveFrame) ?: return null
         val embedding = embed(liveFrame, face) ?: return null
-        return FaceAlignment.matchScore(embedding, storedTemplate.embedding)
+        return storedTemplates.maxOf { FaceAlignment.matchScore(embedding, it.embedding) }
     }
 
     override fun similarity(a: FaceTemplate, b: FaceTemplate): Float =

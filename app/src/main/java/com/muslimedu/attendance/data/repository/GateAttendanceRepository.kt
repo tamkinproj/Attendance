@@ -63,7 +63,10 @@ class GateAttendanceRepository @Inject constructor(
     private suspend fun recordedToday(code: String, today: LocalDate): List<GateScanEntity> =
         gateScanDao.recordedForCodeOnDate(deviceSettings.schoolId.value, code, today.toString())
 
-    /** Card read + face confirmed: this is the attendance record. */
+    /**
+     * Card read + face confirmed: this is the attendance record. A Coming In
+     * after its "Late after" time (Gate Schedule) is marked Late.
+     */
     suspend fun recordConfirmed(
         student: StudentEntity,
         rfidUid: String,
@@ -75,10 +78,17 @@ class GateAttendanceRepository @Inject constructor(
         // Checked again: the student may have been recorded while their face check ran.
         val check = checkSchedule(student.code, direction, now)
         if (check !is GateScanCheck.Allowed) return GateRecordResult.NotAllowed(check)
+        // Late is decided here, at the real scan time - the scan may upload hours later.
+        val config = deviceSettings.gateSchedule.value
+        val lateAfter = if (direction == GateScanEntity.DIRECTION_IN) config?.lateAfterFor(check.number) else null
+        val minutesLate = GateSchedule.minutesLate(config, direction, check.number, now.toLocalTime())
         val scan = newScan(student, rfidUid, direction, now, nowMillis).copy(
             verifiedByFace = true,
             faceMatchScore = faceMatchScore,
             outcome = GateScanEntity.OUTCOME_RECORDED,
+            late = minutesLate != null,
+            minutesLate = minutesLate,
+            lateAfter = lateAfter?.format(TIME_FORMAT),
         )
         return GateRecordResult.Recorded(scan.copy(id = gateScanDao.insert(scan)), check.number, check.perDay)
     }

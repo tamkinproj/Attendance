@@ -169,7 +169,7 @@ fun GateScanScreen(
                         NoticeCard(
                             title = "Face Confirmation Failed",
                             message = "Attendance was not recorded.\n${current.student.name} has no face enrolled on this device. " +
-                                "An admin can enroll it in Admin > Register Card & Face.",
+                                "An admin can enroll it in Admin > Register Card, Face & Number.",
                             color = AccentRed,
                             icon = Icons.Filled.FaceRetouchingOff,
                             onTap = viewModel::dismissResult,
@@ -179,7 +179,7 @@ fun GateScanScreen(
                     is GateScanState.UnknownCard -> NoticeCard(
                         title = "Card not registered",
                         message = "Attendance was not recorded.\nCard ${current.uid} isn't registered to any student on this device. " +
-                            "An admin can register it in Admin > Register Card & Face.",
+                            "An admin can register it in Admin > Register Card, Face & Number.",
                         color = AccentRed,
                         icon = Icons.Filled.CreditCard,
                         onTap = viewModel::dismissResult,
@@ -461,6 +461,13 @@ private fun SuccessCard(
                 modifier = Modifier.padding(top = 10.dp),
             )
             SmallChip("${directionLabel(scan.direction)} · ${recorded.number} of ${recorded.perDay} today", accent, Modifier.padding(top = 8.dp))
+            lateLabel(scan)?.let { label ->
+                SmallChip(
+                    label + (scan.lateAfter?.let { " · after ${displayTime(it)}" } ?: ""),
+                    AccentGold,
+                    Modifier.padding(top = 6.dp),
+                )
+            }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
             Row(modifier = Modifier.fillMaxWidth()) {

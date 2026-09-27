@@ -6,8 +6,31 @@ import androidx.room.Query
 import com.muslimedu.attendance.data.db.entities.GateScanEntity
 import kotlinx.coroutines.flow.Flow
 
+/** What the device-health report says about this gate's records (times are epoch millis). */
+data class GateScanHealth(
+    val pending: Int,
+    val failed: Int,
+    val oldestPendingAt: Long?,
+    val lastScanAt: Long?,
+    val lastUploadAt: Long?,
+    val recordedToday: Int,
+    val rejectedToday: Int,
+)
+
 @Dao
 interface GateScanDao {
+
+    @Query(
+        "SELECT " +
+            "(SELECT COUNT(*) FROM gate_scans WHERE school_id = :schoolId AND outcome = 'recorded' AND sync_status = 'pending') AS pending, " +
+            "(SELECT COUNT(*) FROM gate_scans WHERE school_id = :schoolId AND sync_status = 'failed') AS failed, " +
+            "(SELECT MIN(scanned_at) FROM gate_scans WHERE school_id = :schoolId AND outcome = 'recorded' AND sync_status = 'pending') AS oldestPendingAt, " +
+            "(SELECT MAX(scanned_at) FROM gate_scans WHERE school_id = :schoolId) AS lastScanAt, " +
+            "(SELECT MAX(last_sync_at) FROM gate_scans WHERE school_id = :schoolId AND sync_status = 'synced') AS lastUploadAt, " +
+            "(SELECT COUNT(*) FROM gate_scans WHERE school_id = :schoolId AND scan_date = :today AND outcome = 'recorded') AS recordedToday, " +
+            "(SELECT COUNT(*) FROM gate_scans WHERE school_id = :schoolId AND scan_date = :today AND outcome = 'rejected') AS rejectedToday",
+    )
+    suspend fun health(schoolId: Int, today: String): GateScanHealth
 
     @Insert
     suspend fun insert(scan: GateScanEntity): Long

@@ -304,7 +304,8 @@ class GateScanViewModel @Inject constructor(
         val dir = _direction.value
         when (val result = gateAttendanceRepository.recordConfirmed(student, uid, dir.apiValue, score)) {
             is GateRecordResult.Recorded -> {
-                val detail = "${dir.label} ${result.number} of ${result.perDay} - RFID + face confirmed"
+                val late = result.scan.minutesLate?.let { " - LATE $it min" }.orEmpty()
+                val detail = "${dir.label} ${result.number} of ${result.perDay} - RFID + face confirmed$late"
                 log(student.name, result.scan.scanTime, success = true, detail = detail)
                 val (timeIn, timeOut) = gateAttendanceRepository.timesToday(student.code)
                 show(GateScanState.Recorded(student, result.scan, result.number, result.perDay, timeIn, timeOut))

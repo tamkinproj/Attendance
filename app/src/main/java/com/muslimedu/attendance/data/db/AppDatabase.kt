@@ -23,7 +23,7 @@ import com.muslimedu.attendance.data.db.entities.StudentEntity
         AuditLogEntity::class,
         GateScanEntity::class,
     ],
-    version = 9,
+    version = 13,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -120,6 +120,60 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_8_9 = object : Migration(8, 9) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `face_templates` ADD COLUMN `model` TEXT NOT NULL DEFAULT 'landmark'")
+            }
+        }
+
+        /** Parent mobile numbers for the gate texts, with the same upload state as cards. */
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `students` ADD COLUMN `parent_phone` TEXT")
+                db.execSQL("ALTER TABLE `students` ADD COLUMN `has_parent_account` INTEGER")
+                db.execSQL("ALTER TABLE `students` ADD COLUMN `phone_sync_status` TEXT NOT NULL DEFAULT 'synced'")
+                db.execSQL("ALTER TABLE `students` ADD COLUMN `phone_sync_error` TEXT")
+            }
+        }
+
+        /** The late check on Coming In scans. Scans before this weren't checked: late 0, no late time. */
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `gate_scans` ADD COLUMN `is_late` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `gate_scans` ADD COLUMN `minutes_late` INTEGER")
+                db.execSQL("ALTER TABLE `gate_scans` ADD COLUMN `late_after` TEXT")
+            }
+        }
+
+        /**
+         * Several face angles per student: a `pose` column, and the unique
+         * index moves from (school, student) to (school, student, pose).
+         * Faces enrolled before this become pose 0 and keep working.
+         */
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `face_templates` ADD COLUMN `pose` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("DROP INDEX IF EXISTS `index_face_templates_school_id_student_id`")
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_face_templates_school_id_student_id_pose` " +
+                        "ON `face_templates` (`school_id`, `student_id`, `pose`)",
+                )
+            }
+        }
+
+        /**
+         * Faces shared through the school server: a registration version
+         * and upload state on every face row. Faces registered before this
+         * are queued for upload once, so the school's other gate phones get
+         * them too; their version is built from what already identifies the
+         * registration (all its angles were saved with the same enrolled_at).
+         */
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `face_templates` ADD COLUMN `version` TEXT")
+                db.execSQL("ALTER TABLE `face_templates` ADD COLUMN `sync_status` TEXT NOT NULL DEFAULT 'synced'")
+                db.execSQL("ALTER TABLE `face_templates` ADD COLUMN `sync_error` TEXT")
+                db.execSQL(
+                    "UPDATE `face_templates` SET `version` = 'v12-' || `school_id` || '-' || `student_id` || '-' || `enrolled_at`, " +
+                        "`sync_status` = 'pending' WHERE `model` = 'mobilefacenet' AND `is_active` = 1",
+                )
             }
         }
     }

@@ -79,6 +79,34 @@ this device), the same pieces the old gate screen used.
   - Per student: scan N of a direction is refused before its time
     (`GateScanCheck.NotOpenYet`, e.g. back from lunch before Coming In 2
     opens).
+  - **Late after** (the late-arrival flag, the user's next phase after
+    parent texts): each Coming In has a "Late after" time or none
+    (`GateScheduleConfig.lateAfter`, a switch + time under each Coming In
+    on the Gate Schedule screen; must be from its opening and before its
+    Going Out). A Coming In scanned after it is recorded as **Late** with
+    whole minutes late (`GateSchedule.minutesLate`: late after 7:30 means
+    7:30 is on time, 7:31 is 1 min). New schedules start with defaults
+    (first Coming In +90 min: 6:00 -> 7:30; later ones +30 min: 12:30 ->
+    1:00 PM). **A schedule saved before this has no late check at all**
+    until the admin sets one - a default time the school never chose could
+    flag students (and text parents) wrongly. Stored as
+    `gate_late_after` ("07:30,-") in `DeviceSettings`.
+  - **Not arrived alert** (the user's pick after the signing key): a
+    card under the times on the same screen - on/off, "Not arrived by"
+    time, "Text parents", school days (M T W T F S S circles). Unlike the
+    rest of the screen it is **kept on the server** (the server sends those
+    texts): loaded on open (`GateScheduleViewModel.loadAbsence`,
+    `admin_gate_absence_settings`), saved after the schedule
+    (`saveAbsence` -> `admin_gate_absence_settings_update`); offline or an
+    old server shows why and the schedule still saves on the phone ("Gate
+    schedule saved. The not-arrived alert wasn't saved: ..."). Default time
+    = first Late after + 60 min, else first Coming In + 3 h (6:00 -> 9:00),
+    always before Going Out 1 (`GateSchedule.defaultAbsenceCutoff`); it
+    must be after Coming In 1 opens, after its Late after, and before Going
+    Out 1 (`absenceCutoffProblem`). Parent SMS gets a fourth message, **Not
+    arrived** ({time} = the cutoff; default "{school}: Ang inyong anak na si
+    {student} ay hindi pa pumapasok sa paaralan hanggang {time} ({date})."),
+    hidden until the server has `absent_template`.
 - **Gate dashboard** (`GateDashboardScreen`, the home screen, no PIN):
   Coming In / Going Out buttons, sync status (pending count, last synced,
   Sync now), recent RFID records, "View all" -> `GateHistoryScreen` (by day,
@@ -122,6 +150,9 @@ this device), the same pieces the old gate screen used.
     Cancel records nothing.
   - Success card follows the mockup: tick, photo, name, "Coming In · 1 of 2
     today", Student ID / Section and today's Coming In / Going Out times.
+    A late Coming In adds a gold "Late 22 min · after 7:30 AM" chip. The
+    dashboard summary card shows "N late arrival(s) today", history has a
+    **Late** filter and a Late chip on each late record.
   - The view model outlives the screen, so it ignores the reader unless
     the screen is open (`enter()`/`exit()`) - a tap in the registration
     wizard must not record gate attendance. The wizard does the same the
@@ -142,6 +173,10 @@ this device), the same pieces the old gate screen used.
   section, card UID, `rfid_verified`, `verified_by_face`, score, `outcome`
   (`recorded` | `rejected`), reason, and a per-row `event_id` UUID. Only
   `recorded` + RFID + face = verified attendance (`isVerifiedAttendance`).
+  v11 (`MIGRATION_10_11`) adds `is_late`, `minutes_late`, `late_after`,
+  decided at scan time in `GateAttendanceRepository.recordConfirmed` and
+  uploaded as `late` / `minutes_late` / `late_after` (`late` is null when
+  that Coming In had no late check - "not checked" differs from "on time").
 - **Sync** (`GateSyncManager`): 1) card registrations
   (`RfidCardSyncManager` -> `admin_student_rfid_set`), 2) attendance ->
   `admin_gate_attendance_scan` **oldest first**, stopping at the first
@@ -155,11 +190,32 @@ this device), the same pieces the old gate screen used.
   network returns** (`GateSyncScheduler`: a one-off `SyncWorker` with a
   CONNECTED constraint, queued on every record). The UI shows Pending Sync
   -> Synchronizing -> Synced.
-- **Register Card & Face** (Admin > Register Card & Face, PIN-locked) is
-  one wizard, not separate card and face screens (the user asked for it
-  that way): **1 Student** (picker with search and each student's Card /
-  Face status) -> **2 Card** -> **3 Face** -> **4 Done** (summary, "Register
-  next student" / "Finish"). `StudentRegistrationScreen` +
+- **Register Card, Face & Number** (Admin > Register Card, Face & Number,
+  PIN-locked; screen title "Register Student") is one wizard, not separate
+  screens (the user asked for it that way, then for the parent number as
+  a step of it): **1 Student** (picker with search and each student's
+  Card / Face / Parent no. ticks) -> **2 Card** -> **3 Face** -> **4 Parent
+  no.** -> **5 Done** (one summary card with card, face and number, then
+  "Register next student" / "Finish"). The step bar (`StepIndicator`) is
+  numbered circles with labels under them - five steps didn't fit the old
+  one-line label on a phone. **Each step is its own full page** (the user
+  asked not to have card + wizard stacked on one page): the wizard draws
+  its own header (back, "Register Student", "Step 2 of 5 · Card", the step
+  circles; `AppRoot` counts it as owning its chrome), pages slide in with
+  `AnimatedContent`, each shows a student chip and a big icon, and **every
+  step moves on by itself** (the user asked for no buttons): a card read
+  goes straight to the face and a new card replaces the old one without a
+  confirm; the face is captured on the **gate's full-screen camera**
+  (`LiveFaceCaptureView(fullScreen = true)` + `FaceScanOverlay`, only an X
+  to skip) and a capture that doesn't take retries itself on the same
+  camera; a complete valid number saves itself after
+  `PHONE_SAVE_DELAY_MILLIS`; Done moves on after `DONE_MILLIS`. What a
+  student already has (card, face, number) is kept after a `KEEP_MILLIS`
+  countdown bar, with an optional "Keep it now" / "Re-enroll" link. The
+  only real choice left is a face that's already another student's (Try
+  again / Skip). The number page previews the text the parent will get.
+  The old framed (non-full-screen) camera showed a black half on the
+  user's phone - the wizard no longer uses it. `StudentRegistrationScreen` +
   `StudentRegistrationViewModel`; the old `RfidEnrollmentScreen` /
   `FaceEnrollmentScreen` and their view models were removed.
   - Card: attaches a physically read card to an existing student - never
@@ -170,22 +226,83 @@ this device), the same pieces the old gate screen used.
     The card is saved the moment it's read, then the wizard moves straight
     on to the face while the upload to the server registry finishes (its
     result shows on the card summary).
-  - Face: the gate's own live auto-capture (`LiveFaceCaptureView`) +
-    `FaceTemplateRepository.enroll`. A student who already has a face can
-    keep it or re-enroll; "Skip face for now" finishes without one (the
-    Done step warns that the gate refuses them until a face is enrolled).
-  - Students list: card number + sync state; the card icon opens Replace /
-    Deactivate (Replace opens the wizard at the card step), the face icon
-    opens the wizard at the face step (card step if there's no card yet).
-    Back from a wizard opened there returns to Students.
+  - Face: the gate's own live auto-capture (`LiveFaceCaptureView`),
+    **three angles** (the user asked for 2-3 angles, matched best-of, to
+    cut false rejections while the MobileFaceNet threshold is untested on
+    phones): **Straight**, then **One side**, then **Other side**
+    (`FaceAngle`, `FaceAngles`). A banner on the camera says which angle,
+    with a dot per angle. The camera only fires at the asked angle - the
+    fast detector's head yaw (`headEulerAngleY`) is passed through
+    `LiveFaceCaptureView(acceptYaw = ...)`: straight |yaw| <= 12, a side
+    12-40 degrees, the other side the opposite sign of the first
+    (deliberately not "left"/"right" - the front preview is mirrored).
+    Each angle goes through `FaceTemplateRepository.captureAngle` (face
+    found; liveness only on the straight one; not another student's face),
+    and each side must still score >= `SAME_PERSON_MIN_SCORE` (0.62)
+    against the straight capture, or it retries ("doesn't look like the
+    same person"). A side not managed in `SIDE_ANGLE_TIMEOUT_MILLIS` (20s)
+    is skipped; the X on the camera finishes with the angles taken so far
+    (none -> skip face). All angles are saved together at the end
+    (`saveEnrollment`, one transaction replacing every old row of that
+    student). A student who already has a face can keep it or re-enroll
+    (the page shows "N of 3 angles" and suggests re-enrolling when < 3);
+    "Skip face for now" goes on without one (the Done step warns that the
+    gate refuses them until a face is enrolled). Done shows "Face enrolled
+    · N of 3 angles".
+  - Parent no.: the parent's mobile number the gate texts go to. Optional
+    ("Skip for now"; Done says the parent gets no texts). Checked as it's
+    typed - a Philippine mobile, stored as `09XXXXXXXXX`
+    (`normalizePhMobile`, same rule as the server's `PhMobileNumber`);
+    blank removes a number the student had, and a student who has one can
+    "Keep 0917 123 4567". Saved on the device at once
+    (`StudentEntity.parentPhone`, `MIGRATION_9_10`) and uploaded to
+    `admin_set_parent_phone` by `ParentPhoneSyncManager` (part of every
+    gate sync, same pending/synced/failed cycle as cards). The number lives
+    on the student's **parent account** on the server (`User.parent_id`),
+    so a student with no parent account gets a warning and the server
+    refuses the upload (shown in Students) until one is linked on the web -
+    the next student download that reports a parent account re-queues it.
+  - Students list: card number, parent number + sync state, and a gold
+    "Face: N of 3 angles - re-register for better matching" line for a
+    face with fewer than all angles (e.g. enrolled before this); three buttons
+    per student - Card (Replace / Deactivate; Replace opens the wizard at
+    the card step), Face (wizard at the face step, card step if there's no
+    card yet), Parent no. (wizard at the number step). Filter "No parent
+    no." lists who still gets no texts. Back from a wizard opened there
+    returns to Students.
   - Every card change goes to the server registry (pending until sent; a
     refusal shows its reason). The student download applies the server's
     cards (`rfid_managed: true`) but never overwrites a change on this
-    device that hasn't been sent.
-- **One face per student** - `FaceTemplateRepository.enroll` compares the
-  new face with every other student's enrolled face in the school and
-  refuses a match ("This face is already enrolled for <name> (<ID>)",
-  `FaceEnrollResult.AlreadyEnrolled`, logged in the Audit Log). A match
+    device that hasn't been sent. Parent numbers work the same way
+    (`parent_phone_managed: true`, `has_parent_account`, `parent_phone`).
+- **Parent SMS** (Admin > Parent SMS, `ParentSmsScreen` +
+  `ParentSmsViewModel`): the wording of the text a parent gets on each
+  scan - one for Coming In, one for Going Out, per school, kept on the
+  server (it sends the texts), so this screen needs a connection. Default
+  is Filipino, from the user's own example, **prefixed with the school's
+  name** ("{school}: ..." - with the free phone gateway the sender shows
+  only the SIM's number, and a SIM can't send under a name; a real sender
+  name needs Semaphore's approved sender ID; with no school name the
+  leftover ": " is dropped): "Ang inyong anak na si
+  {student} ay pumasok sa paaralan ng {time} ({date})." / "... ay lumabas
+  ng paaralan ng ...". Placeholders {student} (required) {time} ("7:42
+  AM") {date} ("Sep 26, 2026") {code} {school}, inserted by chips at the
+  cursor. Live preview as an SMS bubble with a real student's name, a
+  character / SMS-part count (`SmsTemplate`, rendered exactly like the
+  server's `GateSmsTemplate::render` - pinned by `ParentSmsTest`), "Use
+  default". Also shows how many students have a parent number and whether
+  the platform's SMS switch is on (a superadmin setting on the web - no
+  texts go out while it's off). A third message, **Late Coming In**, is
+  sent instead of the Coming In one for a late scan (default "... ay
+  pumasok sa paaralan ng {time} ({date}) - huli ng {minutes_late}
+  minuto.", extra placeholder {minutes_late}); hidden when the server
+  doesn't have late messages yet.
+- **One face per student** - `FaceTemplateRepository.captureAngle` compares
+  each captured angle with every angle of every other student's face in the
+  school (each student at their best angle, `bestPerStudent`) and refuses a
+  match ("This face is already enrolled for <name> (<ID>)",
+  `FaceCaptureResult.AlreadyEnrolled`, logged in the Audit Log; nothing of
+  that enrollment is saved). A match
   means a score at the gate's own match threshold (Face Settings, default
   0.75): exactly when the gate would accept the face as that other student.
   Runs only when `FaceRecognizer.canTellPeopleApart` is true - it is for
@@ -218,8 +335,47 @@ this device), the same pieces the old gate screen used.
     which replaces the old row. Old rows are kept, not deleted.
   - Liveness is unchanged: still `LivenessDetector`'s eye-open heuristic,
     so a good photo/video of the student can still pass the camera step.
-- Admin screens (Register Card & Face, Students, Gate Schedule, Face Settings, Audit
-  Log, Sync & Account, Change PIN) sit behind a **device PIN**
+  - **Several angles per student** (`MIGRATION_11_12`): `face_templates.pose`
+    (capture order, 0 = straight; a skipped side leaves no gap) and the
+    unique index moves from (school, student) to (school, student, pose).
+    Faces enrolled before this are pose 0 and keep working as one angle.
+    `FaceTemplateRepository.verify` embeds the live frame once and takes
+    the **best** score over all the student's angles
+    (`FaceRecognizer.verifyFace(frame, templates)`), against the same match
+    threshold. Best-of lowers false rejections for a turned head; it also
+    gives an impostor up to three tries at the threshold instead of one -
+    watch for that when tuning Face Settings on real phones. Face counts
+    are students, not rows (`COUNT(DISTINCT student_id)`).
+- **Gate device health** (the user's pick from the feature list: "last
+  synced time, battery, and whether the RFID reader is connected, so an
+  admin can see a gate that's gone offline without walking over to it").
+  `DeviceHealthReporter` posts a snapshot to `admin_gate_device_heartbeat`:
+  `DeviceSettings.deviceUid` (random per install), model, Android and app
+  version, battery % + charging (`BatteryManager`), reader plugged in
+  (`RfidManager.currentStatus()`, read from the USB port so it works with no
+  screen open), network type, attendance waiting to upload + the oldest's
+  time, refused uploads, last upload / last full sync
+  (`DeviceSettings.lastSyncOkAt`, set when an upload run finishes with
+  nothing stopped) / last scan, today's recorded + face-failed counts
+  (`GateScanDao.health`), students / cards / faces on the phone, schedule
+  set, camera permission, app on screen (`MainActivity` onStart/onStop),
+  free storage and the phone's time. When: every 5 min while the process
+  runs (`start()` from `App.onCreate`), after every `SyncWorker` run (every
+  15 min even with the app closed), 3 s after the reader or charger is
+  plugged/unplugged or the app opens/closes (`reportSoon`, debounced), and
+  Sync & Account's "Report now". Throttled to one a minute unless forced;
+  never queued (a missed report is replaced by the next); 404/405/501 =
+  "not set up on the school server yet". The server answers with the name
+  the admin gave the phone on the web and the **clock skew**: the gate
+  dashboard shows a red "This phone's clock is 12 min fast" card (tap opens
+  date & time settings) at 5+ min off (`DeviceHealth.clockWarning`) - scans
+  are stamped with the phone's clock, so a wrong one means wrong times, Late
+  flags and parent texts. Sync & Account has a "This gate device" card (web
+  name, last report, live battery/reader/app version, Report now). CI builds
+  are versioned `0.1.<GITHUB_RUN_NUMBER>` (versionCode = run number) so the
+  web shows which build each gate runs; local builds are `0.1.0-local`.
+- Admin screens (Register Card, Face & Number, Students, Parent SMS, Gate
+  Schedule, Face Settings, Audit Log, Sync & Account, Change PIN) sit behind a **device PIN**
   (`AdminPinManager`: salted PBKDF2 hash in Keystore-backed encrypted prefs,
   5 wrong tries -> 60s lockout, counted persistently). They relock when you
   return to the gate. The PIN screen is an access-code keypad (the user's
@@ -233,12 +389,63 @@ this device), the same pieces the old gate screen used.
 - Sign-in is limited to role `admin` (the gate endpoints' `requireAdmin()`
   checks `role_id === 2`, so teachers and superadmins would only get 403s).
   The only in-app sign-in after that is the "forgot PIN" re-authentication,
-  which skips the sync step.
-- Real Room migrations (`MIGRATION_6_7`, `MIGRATION_7_8`), not the
+  which skips the sync step. The web also decides who may use the gate
+  (`GateAccess`, see "Gate access switches" below): sign-in is refused, and
+  a restored session signed out at app start, when the school's `rfidGate`
+  is off or a co-admin's `gateApp` is off - with the reason on the sign-in
+  screen. Scans already on the phone are kept.
+- Real Room migrations (`MIGRATION_6_7` ... `MIGRATION_12_13`), not the
   destructive fallback - installed devices hold card assignments and face
   templates that exist nowhere else.
-- Face templates stay on the device that enrolled them (unchanged): each
-  gate device enrolls its own faces.
+- **Faces are shared between the school's gate phones** (the user said yes
+  after being told faces are sensitive personal data under RA 10173 and the
+  school should tell parents / get consent). Register once, recognised at
+  every gate; a replacement phone gets every face back on its first sync.
+  `FaceSyncManager`, step 4 of every gate sync (after attendance, never in
+  its way), only while Face Settings > "Share faces with the school's other
+  gate phones" is on (`SettingsRepository.shareFaces`, default on):
+  - **Upload**: every registration gets a UUID `version` and
+    `sync_status = pending` on all its angle rows (`face_templates.version /
+    sync_status / sync_error`, `MIGRATION_12_13`, DB v13 - the state lives
+    on the face rows, not the student row, because the student download
+    rebuilds student rows). Sent to `admin_student_face_set` (code, model,
+    version, device uid, each angle's numbers as base64 little-endian float32
+    - `FaceCodec`, byte-identical to PHP `pack('g*')`, pinned by
+    `FaceCodecTest`). 404/422 -> failed, 405/501 -> "not set up on the
+    school server yet". `updateSyncState` only marks the version it sent, so
+    a re-registration mid-upload stays pending. The wizard queues a sync
+    right after saving a face. Faces registered before v13 get a version
+    from their `enrolled_at` and are queued once by the migration.
+  - **Download**: `admin_student_faces` with `since` =
+    `DeviceSettings.faceDownloadSince` (the server's time of the last
+    download) at most every 5 min, or forced right after a student list
+    download (first sign-in sync and Sync & Account). A face replaces this
+    phone's copy (`FaceTemplateRepository.replaceFace`, one transaction)
+    unless it's the same version or this phone's own registration isn't on
+    the server yet (pending/failed - the phone's wins, like cards). A face
+    for a student not on this phone yet keeps `since` from moving on, so it
+    comes again after the next student download. Other models and damaged
+    numbers are ignored.
+  - Downloaded faces take part in the one-face-per-student check when the
+    next student is registered here; two phones registering the same face
+    to different students at the same time isn't detected (no comparison on
+    the server).
+- **Backup file** (the user asked for it with the face-sharing answer: "export
+  a file of all their faces and cards ... a backup for the other phone"):
+  Sync & Account > Backup > **Export** / **Restore**. One file
+  (`gate-backup-yyyy-MM-dd-HHmm.gatebak`, shared through the share sheet -
+  Drive, email, Files) with every student's card, parent number and face
+  (`BackupRepository`, `GateBackup`). Always password-protected
+  (`GateBackupCodec`: "GATEBAK1" header, PBKDF2-HMAC-SHA256 120k iterations,
+  AES-256-GCM with the header as AAD; min 6 characters, entered twice, can't
+  be recovered). Restore (file picker + password) only into the same school
+  (`school_id` in the file), only for students already on the phone
+  (download the student list first - they're counted), skips a card
+  another student holds here, and queues everything restored for upload
+  like a change made on the phone (cards, numbers, faces pending). Works
+  with no server. `GateBackupTest`: round trip, nothing readable without
+  the password, wrong password, tampering, not-a-backup, newer version,
+  fresh salt/IV per export. Audit log: `backup_exported` / `backup_restored`.
 
 ### Backend + web changes (Laravel - not in this repo)
 The user supplied their Laravel source (routes, app, database) and web
@@ -292,9 +499,630 @@ assuming it's live. It is cumulative (includes the earlier route fix).
   byte-identical stray copy of the trait (wrong folder for its namespace),
   plus many backup files (`api.php1`, `ApiController.phpe`, `*.phpo`, ...).
 
+### Gate device health (Laravel + web - not in this repo)
+
+Delivered as `gate-devices-patch.zip` (only the new/changed files, as the
+user asked), same "not deployed until uploaded" status.
+- **`gate_devices`** table (migration `2026_09_26_000005`, raw SQL
+  `database/sql/gate-devices.sql`, which also records the migration as run;
+  checked on MariaDB, run twice): one row per phone, unique
+  `(school_id, device_uid)`, live state only - each heartbeat overwrites it.
+- **`GateDevice`** model: `findForHeartbeat` - this install's row, else,
+  because every update of this sideloaded app is a reinstall with a new
+  device id, the most recently seen row of the **same model** in the school
+  that has been quiet 10+ min is taken over (keeps the admin's name for it;
+  two identical phones reinstalled together may swap names). `warnings()`:
+  danger = offline (no report for 20 min), reader not connected, camera
+  permission off, clock 5+ min off, battery <= 10% not charging; warning =
+  battery <= 20% not charging, schedule not set, uploads waiting 30+ min,
+  uploads refused, storage < 200 MB; info = not on the charger, app not on
+  screen, older app build than another gate. `overviewForSchool` sorts
+  attention first, then offline, then name; today's counts are hidden once
+  the last report is from an earlier day.
+- Endpoints (admin, own school; all 501 until the table exists):
+  `admin_gate_device_heartbeat`, `admin_gate_devices`,
+  `admin_gate_device_update` (name), `admin_gate_device_remove`.
+- Web **Gate Devices** (`gate-devices.php/.js`, tile next to Gate Students):
+  tabs All / Needs attention / Online / Offline with counts; a card per
+  phone (status + "reported 3 min ago", battery, reader, uploads, today's
+  scans, warnings); detail sheet with everything reported, rename, remove.
+  Refreshes every minute while visible; "ago" uses the server's clock.
+- **Superadmin view** (the user asked for it after "who can see gate
+  devices?" - until then only school admins could): read-only
+  `superadmin_gate_devices` (role_id 1) -> `GateDevice::overviewForPlatform`,
+  every school's phones grouped by school (schools with phones needing
+  attention first, then with phones offline, then name; school names from
+  `schools.title`, "School #id" if missing) with platform totals. Same page,
+  role-aware (`guardDashboard(['admin','superadmin'])`): a school picker
+  (each option with its phone count and problems), a heading per school,
+  back to the superadmin dashboard, and no rename/remove in the detail sheet
+  (those stay with the school's admin). Tile in the superadmin dashboard's
+  Operations section (`superadmin-dashboard.js`, next to Backend Status).
+- Verified: `php -l`; 31 checks against SQLite with real Eloquent
+  (`laraveltest/device_test.php`: skew, timezone conversion, takeover rules,
+  every warning, offline threshold, overview order/counts, day rollover,
+  build note, platform totals/order/names); the page in headless Chromium with a response generated by
+  the real model (tabs, order, warnings, detail, rename/remove calls, empty
+  and 501 states, dashboard tile) and as superadmin (school picker,
+  headings, per-school tabs, read-only sheet, superadmin tile). Not run in
+  the full Laravel app.
+
+### Not arrived alert (Laravel + web - not in this repo)
+
+Delivered as `gate-absence-update.zip` (only new/changed files; needs the
+gate-devices patch first, since it relies on the heartbeat and
+`gate_devices`). Migration `2026_09_26_000006` / `database/sql/gate-absence.sql`
+(MariaDB-checked; the `absent_template` column add is last so a re-run only
+errors on that line): `gate_absence_settings` (per school: `cutoff_time`
+null = off, `text_parents`, `school_days` "1,2,3,4,5"),
+`gate_absence_alerts` (unique `(student_id, date)` - one text per student
+per day, also what stops two phones' reports double-texting),
+`gate_no_school_days`, `gate_sms_templates.absent_template`.
+- **`GateAbsenceService::run`** - no cron on this server (`Kernel` schedule
+  is empty), so it runs after every gate phone heartbeat, in
+  `app()->terminating` (after the response; the phone never waits). Texts
+  only when: settings on with texts on; a school day (weekday in
+  `school_days`, not marked no-school, and no published
+  `holiday`/`eid`/`suspension` in `academic_calendar_events` covering the
+  date - PH typhoon suspensions count); past the cutoff but within
+  `GIVE_UP_HOURS` (3) - later is dropped, not sent late; and **every gate
+  phone seen today is online, has reported since the cutoff, and has 0
+  uploads waiting** (`readiness`, from `gate_devices`) - so a scan still on
+  a phone can't turn into a false "hindi pa pumapasok". Who: active
+  students with an **active RFID card** and **no gate event of any kind**
+  that day (a face-failed scan means they were there). Alert row first,
+  then the in-app/Messenger push + SMS (`texted` / `no_parent` /
+  `no_phone` / `sms_off`); at most 100 per run, the rest next heartbeat.
+- **Web Gate Students**: "No record" tab renamed **Not arrived**; a banner
+  above the tabs says the cutoff, the count, and the state (before cutoff /
+  texted N at 9:05 / on hold + why / no school + why / off / gave up) with
+  **Mark as no school** / Undo (`admin_gate_no_school_day`; hidden on
+  days that are already no school); each student gets a "Parent texted
+  9:05" or "Not texted: no card / no parent account / no parent number /
+  was at the gate / SMS is off" chip, also after they arrive late.
+  `admin_gate_student_overview` carries `absence` (from
+  `GateAbsenceService::status`) and each student's `absence`.
+- Verified: `php -l`; 31 checks against SQLite with real Eloquent
+  (`laraveltest/absence_test.php`: every hold-back rule, one text per day,
+  concurrent row, SMS off, give-up, calendar suspension incl. multi-day,
+  draft holiday ignored, no-school mark, web states); the SQL on MariaDB
+  (run twice); the page in headless Chromium in every banner state. Not
+  run in the full Laravel app, with a real queue, or a real SMS provider.
+- "Server Error" on the app's Not arrived card (user's live server): the
+  later full `routes/api.php` copies (security, reports) list the absence
+  routes, but the code came only with `gate-absence-update.zip` /
+  `face-sharing-update.zip` - an older `AttendanceApi.php` or a missing
+  `GateAbsenceService.php` gives exactly "Server Error" with APP_DEBUG off
+  (reproduced; a missing table gives a clear 501 instead). Fixed by
+  `gate-server-catchup.zip`: the newest copy of all 37 gate server files
+  (byte-identical to the fully tested test app) + `gate-all-in-one.sql`,
+  one re-runnable script for every gate table/column (columns added via
+  information_schema checks + prepared statements, works on MySQL and
+  MariaDB; users.phone backfill only fills empty numbers). Tested on an
+  empty, a half-updated and a fully updated database.
+- Known limits: one cutoff per school (no per-section/afternoon shift);
+  a face-failed scan still waiting on a phone isn't in `pending_uploads`
+  (only attendance is), so that student could be texted; nothing is
+  written to class attendance as absent - teachers still decide that.
+
+### Shared faces (Laravel + web - not in this repo)
+
+Delivered as `face-sharing-update.zip` (only new/changed files). Migration
+`2026_09_26_000007` / `database/sql/student-faces.sql` (MariaDB, run twice):
+`student_faces`, one row per student (unique `student_id`), `templates` =
+`Crypt::encryptString` of the angles JSON (the app key; hidden from JSON),
+`version`, `angles`, `model`, `device_uid`. `StudentFace::embeddingProblem`
+refuses non-base64 or odd-sized numbers (max 4096 bytes an angle, 5 angles,
+model `mobilefacenet` only). `admin_student_face_set` (same version again =
+no change) and `admin_student_faces` (`since`, one second of overlap;
+active students of the admin's own school only; returns `server_time`),
+both 501 until the table exists. Gate Students' detail sheet shows "Face
+registered: N of 3 angles" (`face_angles` / `face_sharing` in the
+overview). Checked with 14 checks against SQLite + Laravel's real
+Encrypter (`laraveltest/faces_test.php`); not run in the full app.
+
+### Security update (Laravel + web - not in this repo)
+
+From a security review of the Laravel/web copy the user supplied, delivered
+as `security-update.zip` (needs `face-sharing-update.zip` first). Review
+findings, proven where possible: uploads could be HTML/SVG pages on
+manhaje.com that read the web app's localStorage token (shown in Chromium);
+a self-registered school's admin had full admin API access (approval was
+only checked in dashboard.js); an unauthenticated `/api/run-comment-column-fix-4q9wz`
+route altered the DB; password resets didn't revoke tokens. The old blade
+web controllers (any admin could edit/delete any user) are unreachable
+while `RestrictToApi` stays - dormant, not fixed. The modern API scoped
+every user/section lookup by school; no SQL injection found.
+- `BlockUnsafeUploads` (global middleware): refuses html/svg/xml/js and
+  server-script names/content on every upload (last extension, any
+  script extension in the name, sniffed type, .htaccess/.user.ini).
+- `.htaccess` for `public/assets/{uploads,csv_file,word_file,upload}`: no
+  PHP, script/page files denied, `CSP: sandbox` + nosniff on everything
+  but PDFs (Chrome won't show a sandboxed PDF); svg denied when
+  mod_headers is missing. Tested on Apache 2.4 + mod_php incl. missing
+  modules.
+- `EnsureSchoolApproved` (`school.approved`, on the auth:sanctum group):
+  pending/rejected schools reach only me/logout/user settings/password/
+  translations.
+- Password reset deletes the user's tokens; `AppServiceProvider` rejects
+  tokens unused for 90 days (`Sanctum::authenticateAccessTokensUsing`,
+  checked before `last_used_at` is updated - gate phones report every 5
+  min so never idle). Guidance chat links no longer use inline onclick.
+
+### Web app's own door (Laravel + web - not in this repo)
+
+The user asked for the web version to have its own backend and not use the
+API, same UI. Chosen design (asked, they picked it): the same Laravel app
+answers the web app at `https://manhaje.com/apps/web/...` with a session
+cookie (HttpOnly) + CSRF, instead of `/apps/api` + a token in
+localStorage. Delivered as `web-door-update.zip` (needs the security
+update). The phone and gate apps keep `/api` + tokens.
+- `RouteServiceProvider` loads `routes/api.php` a second time under
+  `web/` with `['web', 'throttle:api', EnsureWebSession]`, then
+  `routes/webapp.php` overrides login/logout/logout-all and adds
+  `csrf` + `revoke-old-token` (695 endpoints mirrored, nothing copied).
+  The only named API route (`messenger.webhook`) gets `web.` on its /web
+  copy so `route()` still points at /api and route:cache works.
+  `RestrictToApi` allows `web/`.
+- `WebAppAuthController::login` runs `ApiController::login` itself (same
+  roles, 2FA, pre-registration answers, generic errors), deletes the
+  token it made and logs in the `web` guard (remember-me 30 days).
+  `EnsureWebSession` signs a session out when the password or remember
+  token changed (reset / log out of all devices) or the account is
+  disabled. `TwoFactorController::deviceSessionsList` handles the
+  TransientToken of a session user.
+- Web app: pages live in their own folder (e.g. manhaje.com/qq/), Laravel
+  at /apps, so the base is `location.origin + '/apps/web'`. The cookie +
+  CSRF code is a block at the top of `offline-data.js` (loaded first on
+  every page; three pages that lacked it gain the script tag): adds
+  `X-XSRF-TOKEN`, fetches `/web/csrf` first when needed, retries once on
+  419, and ends/removes any old localStorage token. `getStoredToken()`
+  returns a stand-in so no page code changed; `sw.js` never caches /web/.
+- `.env`: `SESSION_DRIVER` must not be `database` - the app's `sessions`
+  table is school years.
+- Tested on a rebuilt copy of the Laravel app (Laravel 10, MariaDB, all
+  updates, pages at /qq and Laravel at /apps): 22 curl checks + remember-
+  me/logout-all, 18 Chromium checks through the real pages (sign-in,
+  dashboard via /web only, JSON + multipart saves, stale CSRF recovery,
+  old-token cleanup, offline queue replay, sign-out), public forgot-
+  password and admin sign-in. Not tested on the real server/.htaccess.
+- **429 "The server returned an error (429)" fix** (`rate-limit-fix.zip`,
+  the user hit it on manhaje.com/v2/ browsing alone). Not load - Laravel's
+  per-account limit (120/min) used up by two things, measured on the test
+  copy: (1) `runAdminSetupGate` re-ran the 13-call setup checklist on every
+  admin page even when cached complete, and the admin dashboard's ring
+  (`fetchSetupChecklistProgress`) ran the same 13 again - 118 of 146
+  requests over 7 page views; (2) gate phones sign in with the admin
+  account, so their uploads shared the browser's bucket (same limiter
+  name + `user:ID` key). Fix: `RouteServiceProvider` gives `/web` its own
+  limiter `webapp` (signed in 600/min, signed out 120/min per IP - a
+  separate count from `/api`), `api` signed in 300/min (signed out 120);
+  login keeps `throttle:6,1`. `dashboard.js`: a complete setup is re-checked
+  at most every 30 min (`SETUP_RECHECK_MS`, timestamp
+  `muslimedu_admin_setup_gate_<id>_checked_at`; incomplete setups are still
+  checked every page), the ring reuses the guard's answer
+  (`setupKnownComplete` / `setupLiveCheck`); 7 page views now 42 requests.
+  A 429 no longer dead-ends: the guard shows "Continuing in N s" from
+  `Retry-After` and retries by itself (3 times max), `authedPost` waits out
+  a <= 10 s limit once, longer ones give a plain message. Needs
+  `php artisan optimize:clear` (a cached route list keeps `throttle:api`).
+  Checked: 7 HTTP limit checks, 13 Chromium checks (`e2e/rate-limit.js`),
+  the web door's 18 and Gate Reports' 46 still pass.
+
+### Gate SMS notifications for parents (Laravel - not in this repo)
+
+Delivered as `sms-gateway-patch.zip`, same "not deployed until uploaded"
+status as the gate patch above. The user asked for parents to be texted
+when their child scans Coming In/Going Out, and specifically asked whether
+their Facebook account could be connected automatically - it can't:
+Meta requires a parent to message the Page first (an opt-in the platform
+enforces, not something code can skip), and even after that a Page can only
+message them for 24h after their last message TO it - confirmed from the
+backend's own `MessengerIntegrationController`/`MessengerWebhookController`
+docblocks, which already document both limits. That existing Messenger
+integration (one platform-wide Facebook Page, per-user PSID link via
+`User.messenger_psid`, forwarded through `NotificationController::push()`)
+was already there - not built this session - so Messenger stays what it
+was: a free bonus channel for a parent who's connected and stays active,
+never the reliable path.
+
+- **Two SMS providers, picked per-install** (`SmsGatewaySetting.provider`,
+  one global row like `MessengerIntegration`) - both reliable: no opt-in,
+  no time window, just the parent's phone number. `SendSmsNotification`
+  sends through whichever is active, each with its own phone-number shape
+  (Semaphore: local `09...`; the Android gateway: E.164 `+63...` - both
+  derived automatically from whatever an admin types in):
+  - **Semaphore** (semaphore.co, ~PHP 0.35-0.56/text, no monthly fee,
+    reaches all 4 PH networks) - paid, one HTTP POST with an API key, no
+    OAuth. Globe Labs' telco API was considered for its free PHP 1,000
+    sign-up credit but not used - its OAuth token lifecycle is a heavier
+    integration for the same result.
+  - **Android phone gateway** - genuinely free, the user's own follow-up
+    ask after hearing Semaphore's real cost. An old Android phone with its
+    own SIM becomes the sender, via the free, open-source "SMS Gateway for
+    Android" app (github.com/capcom6/android-sms-gateway, docs.sms-gate.app).
+    Its **Cloud mode** is what this points at - no VPS or port-forwarding,
+    the phone connects outbound to the project's own public relay
+    (`https://api.sms-gate.app/3rdparty/v1/messages`, Basic Auth with the
+    device username/password the app shows once switched to Cloud mode).
+    Confirmed by reading the project's actual docs, not assumed. Real
+    trade-offs, stated plainly: depends on one physical phone staying
+    charged and online with nothing here detecting if it goes offline, a
+    carrier can throttle/flag a SIM sending a lot of automated texts, and
+    every message passes through that shared public relay (their own
+    "Private Server" self-hosting option avoids that, at the cost of
+    running a Docker container - not wired up here).
+  - Settings page shows both as selectable option cards; picking one
+    reveals its own fields and setup instructions inline (the Android
+    gateway's card explains installing the app and switching it to Cloud
+    mode right there, rather than sending the admin elsewhere to find out).
+- **The hook**: `AttendanceApi::admin_gate_attendance_scan()` calls
+  `notifyParentOfGateScan()` right after a scan is confirmed and saved -
+  never for a rejected/face-not-confirmed scan, never for a retried/
+  duplicate upload (both return earlier). Resolves the parent via
+  `User.parent_id` (the same column `BehaviorController` already uses for
+  its own parent notifications), then both pushes the free in-app/Messenger
+  notification and dispatches the SMS. The text is the school's own
+  wording (`GateSmsTemplate`, table `gate_sms_templates`, one row per
+  school, null = default), edited in the app's Admin > Parent SMS via
+  `admin_gate_sms_templates` / `admin_gate_sms_templates_update` (admin,
+  own school; each message must contain {student}; the show response also
+  carries `sms_enabled`, the platform switch). Times go out as "7:42 AM",
+  dates as "Sep 26, 2026". A late Coming In uses `late_template`.
+- **Late arrivals (server)**: `gate_events.is_late` / `minutes_late` /
+  `late_after` (migration `2026_09_26_000004`, `parent-sms.sql` part 4;
+  `GateEvent::hasLateColumns()` skips them until the migration has run, so
+  uploads never fail on a half-done deploy). The daily gate row is status
+  `late` when the day's first "in" was late (`AttendanceService::
+  firstGateInLate`). `summarizeDay` adds `late` / `minutes_late` /
+  `late_after` (of the arrival = first verified in) and `late_count`;
+  Gate Students has a **Late** tab (any late Coming In that day), a "Late N
+  min" chip and Arrival / Late after rows. Teacher Gate Records shows the
+  chip; its Sync marks a late arrival **Late** only in the homeroom
+  attendance (subject 0, and only if the school's statuses include
+  `late`) - a subject class later in the day gets Present with "(late N
+  min)" in the remark, since the morning's lateness isn't lateness to that
+  class. Checked against SQLite with real Eloquent (18 checks: out-of-order
+  uploads, lunch-return late, homeroom vs subject sync, the late text) and
+  the Gate Students page in headless Chromium.
+- **`users.phone` is a new real column** - today a phone only exists ad hoc
+  inside `user_information` JSON from one admission flow, so almost no
+  parent has one anywhere queryable. New migration adds the column and
+  backfills it from that JSON where present; everyone else needs one
+  entered by hand.
+- **Where an admin enters it**: opened the existing Gate Students student
+  detail sheet (`gate-students.php/.js`) and added a "Parent contact" card -
+  shows/edits the phone on file, or says plainly there's no linked parent
+  account when `parent_id` is empty. New endpoint `admin_set_parent_phone`
+  writes to the *parent's* phone column, never the student's. It stores
+  one form, `09XXXXXXXXX` (`App\Support\PhMobileNumber`, also used by the
+  SMS job), and refuses (422) anything that isn't a PH mobile - the old
+  job-only check let landline-shaped numbers through. The app's Register
+  wizard (step 4) uses the same endpoint, and `admin_gate_students` now
+  sends each student's `has_parent_account` + `parent_phone` so the app
+  shows them offline.
+- New web page `sms-gateway-settings.php/.js` (superadmin, same layout as
+  `messenger-settings.php`): API key, optional sender name (Semaphore caps
+  it at 11 characters, needs their pre-approval), an on/off switch, and a
+  "send yourself a test message" button before turning it on for real.
+- **Two edits given as instructions in the zip's README, not shipped as
+  full-file patches**: one line in `User.php`'s `$fillable` (`'phone'`) and
+  one array item in `superadmin-dashboard.js`'s Operations section - both
+  files are large, general-purpose files this session doesn't have a
+  guaranteed-current copy of (unlike the gate-patch files, which come from
+  this session's own earlier delivered zip), so overwriting them wholesale
+  risked silently reverting unrelated changes.
+- Real ongoing cost on Semaphore, since there's no way to make actual
+  carrier SMS free through a commercial gateway: roughly
+  `students x events/day x school days/month x PHP 0.35-0.56` - for 300
+  students at 2 events/day, ~PHP 4,200-6,700/month. Globe Labs' PHP 1,000
+  free sign-up credit covers testing, not ongoing volume. The Android
+  gateway avoids this cost entirely at the trade-offs stated above.
+- **Known limits**, same "say it plainly" discipline as the rest of this
+  doc: a student needs both a linked parent account AND a phone on it -
+  neither is guaranteed to exist yet, this patch only adds the column and
+  the UI to fill it in. One gateway account for the whole platform, not
+  per school (same choice already made for Messenger) - a true multi-school
+  SaaS would want billing split per school instead. No SMS on a rejected/
+  failed face check. Not gated by the existing `NotificationPreference`
+  model - a parent can't opt out of just the SMS channel yet.
+- Verified the same way as the gate patch: `php -l` on every new/edited PHP
+  file; the two edited JS files (`gate-students.js`, the new
+  `sms-gateway-settings.js`) passed `node -c` and were driven end-to-end in
+  headless Chromium against a mocked API (both provider option cards
+  swap fields correctly, save, send a test message, edit and save a
+  parent's phone from the student detail sheet, and the "no parent account
+  linked" message for a student with none). **Not run** against the real
+  Laravel app, a real Semaphore or Android-gateway account, or a real
+  phone.
+
 **Not verified on a device**: the app compiles and its unit tests run in CI,
 but the RFID reader, camera and migration need real hardware - especially
 `MIGRATION_7_8` on a device that already has v7 data.
+
+### Attendance reports (Laravel + web - not in this repo)
+
+The user asked directly: "Attendance reports on the web: daily or monthly
+per class, late and absent counts, export to Excel/PDF." Delivered as
+`reports-update.zip` (needs the earlier gate/security/web-door updates).
+A read-only web admin page, **Gate Reports**, next to Gate Devices - one
+day or one month, optionally one class, built from the same `gate_events`
+data every other gate page already reads (no new table, no migration).
+
+- **`GateReportService::build(schoolId, period, value, sectionId)`** - the
+  one place the definitions live, so this page, Gate Students and the
+  "not arrived" alert can never disagree:
+  - **Present**: the gate recorded the student (RFID + face) that day.
+  - **Late**: part of Present - the day's first verified Coming In was
+    after that Coming In's "Late after" time (same flag `GateSchedule` /
+    `is_late` already compute at scan time - nothing recomputed here).
+  - **Face failed**: at the gate, but every face check that day was
+    rejected, so nothing was recorded - never counted as absent.
+  - **Absent**: a *counted* school day with no scan of any kind.
+  - **A day counts** only when it is a school day - the exact rules
+    `GateAbsenceService::noSchoolReason` already uses (weekday in the
+    school's `gate_absence_settings.school_days`, not a
+    `gate_no_school_days` row, not a published holiday/Eid/suspension in
+    `academic_calendar_events`; Monday-Friday when the absence tables
+    don't exist yet) - **and** the gate actually recorded at least one
+    scan that day. The second half matters: a day the gate phone was off
+    or not yet started isn't "every student absent", it's a day nobody
+    could have scanned - so it's shown as its own reason
+    ("No gate scans that day (gate not used)") and left out of every
+    count, the same way a holiday is. A scan that does land on an
+    otherwise-excluded day (a Saturday make-up class, a day before the
+    school even started counting) still shows on screen (lower-case p/l
+    in the day grid) but never moves the totals.
+  - **A student counts from the day they got an RFID card**
+    (`student_rfid_cards.assigned_at`, or their first scan if the card
+    registry doesn't reach that far back) - a student who never had a
+    card is listed (so the admin can see who still needs one) but is
+    never counted absent for days before or without one. "Today" always
+    counts "so far" rather than flagging everyone not-yet-scanned as
+    absent.
+  - One school's students/classes/scans only - the same `school_id` scope
+    every other admin endpoint uses; a class from another school is 404,
+    not silently empty.
+- **`SimpleXlsx`** - a small `.xlsx` writer built only on PHP's `ZipArchive`
+  (no Composer package: `PhpSpreadsheet` isn't in this app's
+  `composer.json` and the user's own hosting can't run `composer install`
+  mid-session). Sheets of styled cells (bold/header/percent/late/absent/
+  face-failed/off), column widths, frozen header rows, landscape +
+  fit-to-page print setup. Falls back to a plain CSV automatically
+  (`format=csv`, or whenever `ZipArchive` isn't compiled in) - still a
+  correct file, just without the coloring; a cell that looks like a
+  formula (a student name/code starting with `=`/`+`/`-`/`@`) is
+  quote-prefixed so it can never execute as one when opened in Excel.
+- **`GateReportController`** - `admin_gate_report` (JSON, for the page)
+  and `admin_gate_report_export` (the file, `format: xlsx|csv`, defaults
+  to xlsx). Both `requireAdmin()` (role_id 2, own school only), validate
+  `period` (day/month), `date`/`month`, and an optional `section_id`
+  checked against the admin's own school before running the report.
+- **Web `gate-reports.php/.js`**: Day/Month toggle, a date or month
+  picker with previous/next arrows (capped at today), a class dropdown,
+  four stat cards, a by-class table (a month), a by-day table (a month,
+  clicking a day jumps into that day's view), a day-by-day grid for one
+  class in a month (like a DepEd SF2/class register), and a searchable,
+  sortable student table. The chosen view is kept in the page's own URL
+  (`?period=month&month=2026-09&section=11`) so a reload or a bookmark
+  returns to the same report. Uses `authedPost`/the existing offline-data
+  cache for the JSON report (so the last-seen report still shows while
+  offline) but calls `fetch()` directly for the Excel download (a binary
+  file isn't something the JSON-shaped offline cache/queue can hold, and
+  downloading one certainly isn't a change to *queue* for later - it
+  refuses cleanly with "You're offline" instead).
+- **PDF is deliberately not a server-generated file** - it's this same
+  page, printed by the browser ("PDF" button calls `window.print()` after
+  swapping in print CSS and a page title so "Save as PDF" suggests a
+  sensible filename). A `@media print` block hides the header/controls/
+  search bar, shows a plain print header instead, and switches the page
+  size to landscape only for the one view wide enough to need it (a
+  month's day-by-day grid for one class).
+- Verified: 54 checks of `GateReportService` itself against a seeded
+  month (late arrivals, absences, a face-failure day, a marked-no-school
+  day, a published holiday, a draft/unpublished holiday correctly
+  ignored, a Saturday with no school, a day the gate wasn't used at all,
+  a student who got their card mid-month, a student with no card, a
+  second school's own separate data); 30 HTTP checks of both endpoints
+  through `/api` (token) and `/web` (cookie + CSRF) - same file byte-for-
+  byte either way, wrong role refused, another school's class 404s, bad
+  dates/months 422, the CSV formula-injection guard; the generated
+  `.xlsx` opened with Python's `openpyxl` *and* a real LibreOffice Calc
+  (converted to PDF and rendered to images, not just parsed) to catch a
+  file that's valid XML but wouldn't actually look right opened for
+  real; 46 checks driven in real Chromium through the actual login and
+  dashboard pages (the new dashboard tile, both view modes, the class
+  picker, prev/next date arrows, the URL remembering the view, search/
+  sort, clicking through from a class or day row, the Excel file
+  downloading with the right name and content, the print layout in both
+  orientations, the offline-cached fallback, no sideways scroll at phone
+  width). Not run against the real Laravel app or a real phone-sized
+  browser.
+
+### Gate access switches (Laravel + web + app)
+
+The user asked for the superadmin and the main admin to manage who can use
+the RFID gate "like other features". Delivered as `rfid-access-update.zip`
+(only new/changed files; needs the reports/catch-up `routes/api.php`).
+- **SuperAdmin, per school**: a new school feature `rfidGate`
+  (`School::GATE_FEATURES`), in Schools > Manage Features under "Gate
+  Attendance (RFID + Face)". Default = **follows `attendance`** (a
+  SuperAdmin override wins, then a package that names it), so nothing
+  changed for any school when it shipped - a school with Attendance off
+  never saw the gate tiles either. A school list chip shows "RFID Gate
+  Attendance (off)".
+- **Main (primary) admin, for co-admins**: four keys added to
+  `School::ROLE_FEATURES['admin']` - `gateApp` (gate phones: sign-in and
+  everything they upload), `gateStudents`, `gateDevices`, `gateReports` -
+  in Dashboard Cards > Co-Admins, labelled Allowed / No access. Hidden
+  there while the school's `rfidGate` is off. The tiles already went
+  through `onAdmin()`, so they hide by themselves.
+- **Enforced on the server**, unlike the other role cards (which are menu
+  only): `EnsureGateAccess` middleware on every gate route in
+  `routes/api.php` (`$gate . ':gateApp'` etc.; the card and parent-number
+  routes take `gateApp,gateStudents` - either is enough - because both the
+  app and Gate Students use them; teacher routes check only the school;
+  `superadmin_gate_devices` is not wrapped). 403 with `reason`
+  `gate_feature_off` / `gate_coadmin_off` and a sentence the app and the
+  pages show as is. The primary admin, teachers and other roles skip the
+  co-admin check.
+- Web: `admin-dashboard.js` gate tiles on `rfidGate` (falls back to
+  `attendance` on a server that doesn't send it), `teacher-attendance.js`
+  hides the Gate Records method while it's off, `superadmin-schools.js`
+  shows the switch only when the server knows the key.
+- App: `UserDto` gained `is_primary_admin`, `school_features`,
+  `role_features` (raw `JsonElement` - PHP sends an empty array as `[]`,
+  which Gson can't read as a Map); `GateAccess.problem()` checked in
+  `AuthRepository.login` and `validateSession`. Missing keys (older
+  server) = allowed. `GateAccessTest`.
+- **Found while testing**: nothing ever created
+  `schools.role_feature_overrides` (read/written by School.php and
+  RoleFeatureController, no migration in the supplied source), so on such
+  a database every Dashboard Cards switch fails with "Could not save that
+  change". Added migration `2026_09_27_000001` and
+  `database/sql/gate-access.sql` (adds it, `feature_overrides` and
+  `users.is_primary_admin` when missing; a school with admins but no main
+  admin gets its lowest-id admin as main admin, the original migration's
+  rule; re-runnable).
+- Verified: 69 HTTP checks (`accesstest.sh`: every gate route for main
+  admin / co-admin / teacher, each switch, /api and /web, messages,
+  superadmin switch + reset + following Attendance), 34 Chromium checks
+  (`e2e/gate-access.js`), the SQL on an empty and an existing database
+  twice, and the Gate Reports 30 + 46 checks still pass. The test copy
+  needed a stand-in `config/roles.php` (not in the supplied source, not
+  shipped) for the `role:superadmin` routes to run.
+
+### Offline web for every role (web only - not in this repo)
+
+The user asked for the web app's offline feature to work for all role
+accounts, not just admin. Delivered as `offline-all-roles-update.zip`
+(13 files in `v2/`, no server or database change). What made it admin-only,
+and the fix:
+- `sync-status.js` (Offline & Sync) was guarded `['admin','teacher']` and
+  linked only from the admin dashboard; uploading queued writes is manual
+  and lived only there, so other roles' offline changes could never leave
+  the device. Now `guardDashboard(null)`, back link `dashboardUrlForRole`,
+  an Offline & Sync tile on every role dashboard (+ placeholder links,
+  private menu, Account Settings row), and `pwa.js`'s top bar has
+  **Upload now** (online + pending, signed-in pages only) / **Details**
+  (offline + pending). Still never uploads by itself.
+- `offline-data.js` read detection: any unrecognised read counted as a
+  write, so offline it was queued and the page got a fake `{queued:true}`
+  (every role's `academic_locale_bundle`, notification badge, feeds,
+  polls, Quran tracker, scholarship search). New suffixes `_get _history
+  _feed _poll _search _queue _bundle _unread_count _mine _my_children
+  _form_config _translations _packages _templates _today _stats` + an
+  exact list, checked against all 696 routes (no write matches;
+  `_student(s)`/`_members` deliberately not suffixes). More NEVER entries
+  (forgot_password, message_thread_start, guidance_inquiry_start/claim,
+  messenger links, test email/SMS, exports).
+- Download Now: `COMMON_DOWNLOAD` + `FULL_DOWNLOAD_BY_ROLE` for every role,
+  each entry exactly what that role's pages send (recorded by crawling
+  every role's menu in Chromium - the cache key is path + body).
+- `flush()` keeps the change and stops on 401/419/429/5xx (used to drop
+  it, so an expired session lost everything done offline).
+- `sw.php` builds `PRECACHE` from the folder (pages, scripts, assets;
+  skips sw.*, "(1)" copies, non-page .php). The hand list in sw.js had 146
+  files; ~110 pages (student/teacher/Quran/scholarship/chat) stopped
+  working offline after every deploy.
+- Verified: 150 Chromium checks with the real service worker for student,
+  teacher, cashier, registrar, alumni, parent, superadmin
+  (`e2e/offline-roles.js`); web door 18 and Gate Reports 46 still pass.
+
+### Qur'an Tracker wizard (web only - not in this repo)
+
+The user asked for the web Qur'an Tracker to be simple and interactive,
+"like a game wizard", with no new features, because some teachers are
+old. Delivered as `quran-wizard-update.zip` (3 files in `v2/` + an Arabic
+translations SQL; no server change).
+- `quran-tracker.php/js` (teacher dashboard > Quran Progress, also admins)
+  is now a 5-step wizard, one question per screen, big targets (26px
+  questions, 150px tiles, 60-64px buttons): Student (tiles with where each
+  student is) -> Lesson (New lesson / Review / Recite to me / Fix weak parts
+  = new_hifz / murajaah / tasmee / revision) -> Ayahs (pre-filled: not
+  started = Al-Fatihah 1-5, new lesson = next 5 ayahs after the position or
+  the next surah, review = 1 to the position; big -/+ steppers clamped to
+  the surah, full-screen searchable surah list) -> Result (4 big coloured
+  buttons) -> Save (one-sentence summary; optional tap-to-count mistake
+  chips, note + "parents can see" only once a note is typed, "another
+  day?" link). Then a celebration (confetti for a pass, new position from
+  the save response) with Next student / Another lesson. Phone back steps
+  back (`history.pushState`), students done on the page get a Done badge.
+  Offline saves show "Saved on this device" (offline-data queue).
+  Right-to-left works (`inset-inline-end`, `text-align: start`, arrows
+  flipped by `.qw-flip`).
+- `quran-student.js`: Record Session / the hero card open the wizard with
+  `?student_id=` (starts at step 2); the old sheet is gone.
+- **Bug fixed on the way**: the old sheet sent `mistakes: [{type, count}]`,
+  but `QuranTrackerController::recordSession` validates
+  `mistakes.*.mistake_type`, so every session saved with a mistake got a
+  422 (reproduced). The wizard sends `mistake_type`.
+- Dropped from the teacher's page (still on the profile / admin Qur'an
+  pages): the status summary chips and status/mode chips on the list.
+- `quran-wizard-arabic.sql`: 87 `quran_wizard.*` keys + the Offline & Sync
+  tile text in `academic_translations`. Starts with `SET NAMES utf8mb4`
+  (a latin1 client stored mojibake without it) and deletes its own rows
+  first: the unique key includes `school_id`, which is NULL for these
+  platform rows, so `ON DUPLICATE KEY` never matches and a re-run
+  duplicated every row (true of the app's other *_arabic_translations.sql
+  files too).
+- Verified: 51 Chromium checks at 390px (`e2e/quran-wizard.js`) as a
+  teacher (every step, prefills, limits, surah search, mistakes/note in the
+  DB, position only moving on a passed new lesson, back button, profile
+  Record button, offline save + upload), an admin, and an Arabic teacher
+  (rtl, translated, arrows flipped). The test school was made a markaz and
+  given the teacher two classes for the run, then put back.
+
+### Qur'an Tracker: days in the current mode (web only - not in this repo)
+
+Follow-up ask: track what day / how many days it has been since a
+student's mode last changed (e.g. moved to Tasmee' - reciting to the
+teacher instead of a new lesson), so a student left reviewing or
+reciting-to-teacher for weeks stands out from one who just got there.
+Delivered as a small patch on top of `quran-wizard-update.zip` (needs it
+first) - one migration, one model, one controller, three web files, plus
+an optional Arabic SQL for the new strings only.
+
+- **`quran_student_progress.mode_changed_at`** (new nullable timestamp,
+  migration `2026_09_28_000001`) - stamped only when `mode` actually
+  changes, in both places that set it: `advancePosition()` (every session
+  save - `mode` follows the latest session type, see that method's own doc
+  comment) and `updateProgress()` (an admin/teacher correction). Re-saving
+  the *same* mode never moves it, which is the whole point - a student
+  reciting Tasmee' every day for two weeks should show "14 days", not
+  reset to "today" on each session. Existing rows (no history of when
+  their mode last changed) are backfilled from `updated_at`/`created_at`
+  by the migration, not left null.
+- **`QuranTrackerController::shapeProgress()`** adds `mode_changed_at`
+  (`Y-m-d`) and `days_in_mode` (whole days via `diffInDays`, 0 = today) to
+  the same payload the dashboard, student profile and session-save
+  response already return - no new endpoint.
+- **Web**: `quran-tracker.js` (wizard's `whoHtml()`, shown on steps 2-5)
+  and `quran-student.js` (the profile page's mode mini-chip) both show
+  "Tasmee' · 9 days" / "New lesson · today" (`modeDaysText()` /
+  `modeDaysLabel()`). A student whose mode is anything other than
+  `new_hifz` (or `paused`, already flagged by its own status) for 14+ days
+  (`QW_STUCK_DAYS`/`QS_STUCK_DAYS`) gets an amber "stuck" style - `new_hifz`
+  is never flagged this way, since staying there a while memorizing is
+  normal. Both pages tolerate a null `days_in_mode` (an old cached payload
+  from before this shipped) by showing the mode label alone rather than
+  crashing.
+- `quran-mode-days-arabic.sql`: the 6 new `quran_wizard.mode_*` /
+  `quran_student.mode_*` keys only - run after (or instead of re-running)
+  `quran-wizard-arabic.sql`; same safe-to-run-again DELETE-then-INSERT
+  shape.
+- Verified: a real-Eloquent check against the webtest DB (new row gets
+  stamped immediately, a real mode change moves it forward, re-saving the
+  same mode does not, a null old-style row doesn't break the shaper), an
+  HTTP round trip through `quran_tracker_session_save` confirming the
+  fields appear end-to-end, and 18 direct checks of the new JS helpers
+  (`modeDaysText`/`modeIsStuck`/`modeDaysLabel`, singular/plural/null/no-
+  mode text, the 13-vs-14-day stuck boundary, `new_hifz` never flagged,
+  the rendered `whoHtml()` markup) - run without depending on the live
+  page's admin setup-checklist gate, which was in an unrelated
+  incomplete state in the sandbox at the time. Not driven through the full
+  logged-in page in this pass; the JS is the same code the already-tested
+  wizard page loads unchanged otherwise.
 
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
@@ -1020,11 +1848,31 @@ Two separate causes, both fixed:
    real key before any store) and CI uploads it as
    `apk-release-install-this`. Install that one on the gate phone.
 
-   CI creates a fresh debug key on every run, so each new APK is signed
-   differently and won't install over the previous one without an
-   uninstall - which wipes the device's cards, faces and unsynced scans.
-   A fixed signing key (stored as a GitHub secret) would fix that; not set
-   up yet.
+   **Fixed signing key (the fix for "every update wipes the phone").** CI
+   used to sign with a fresh debug key each run, so each APK needed an
+   uninstall first - wiping the phone's cards, faces and unsent scans. Now
+   both APKs are signed with one permanent key: a 4096-bit RSA PKCS12
+   keystore (alias `gate`, valid 100 years) generated for the user and
+   **never committed** (the repo is public; `*.p12`/`*.jks`/`*.keystore` are
+   git-ignored). CI reads it from two repository secrets,
+   `GATE_KEYSTORE_BASE64` (the keystore, base64; line breaks/spaces from a
+   paste are stripped) and `GATE_KEYSTORE_PASSWORD` (store = key password),
+   writes it to `$RUNNER_TEMP` and passes `GATE_KEYSTORE_FILE` to Gradle
+   (`gateKeystore` in `app/build.gradle.kts`, signing config `gate`). The
+   workflow's `GATE_CERT_SHA256` is the key's public certificate fingerprint:
+   "Check the APK signatures" (apksigner) fails the build if the secrets
+   produce any other key, and without the secrets (a fork, or before they
+   were added) the build falls back to the debug key and uploads
+   `apk-release-NOT-FOR-GATE-PHONES` instead of `apk-release-install-this`,
+   so a wrong-key APK can't be mistaken for the real one. Android also
+   needs the new APK's versionCode >= the installed one's - it is the CI run
+   number, which only grows. **Lose the keystore and the next update wipes
+   the phones again** - the user was told to keep a private backup; GitHub
+   secrets can't be read back. The user added both secrets on 2026-09-26.
+   The switch itself needs one last uninstall
+   per phone (the old APKs carry old random keys): upload everything first,
+   then reinstall; cards and parent numbers come back with the student
+   download, faces must be registered again that one time.
 
 ### Plugging in the reader throws you back to the dashboard
 Symptom: on Assign RFID Card (now the wizard's card step, "Tap <name>'s card on the reader"), plugging
@@ -1632,6 +2480,6 @@ git branch -d feature/your-feature
 
 ---
 
-**Last Updated**: 2026-09-25  
+**Last Updated**: 2026-09-26  
 **Created by**: Claude Code  
 **Status**: Active Development

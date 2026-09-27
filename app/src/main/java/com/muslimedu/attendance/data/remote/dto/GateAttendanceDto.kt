@@ -37,6 +37,14 @@ data class GateAttendanceScanRequest(
     @SerializedName("face_score") val faceScore: Float? = null,
     /** Per-record UUID: the server ignores an event id it already has, so a retried upload is never counted twice. */
     @SerializedName("device_event_id") val deviceEventId: String? = null,
+    /**
+     * The gate's late check on a Coming In, decided at scan time: null when
+     * that Coming In has no late check (or it's a Going Out), else whether it
+     * was after [lateAfter] ("HH:mm") and by how many minutes.
+     */
+    @SerializedName("late") val late: Boolean? = null,
+    @SerializedName("minutes_late") val minutesLate: Int? = null,
+    @SerializedName("late_after") val lateAfter: String? = null,
 )
 
 /**
@@ -96,6 +104,10 @@ data class GateStudentDto(
     @SerializedName("section_name") val sectionName: String?,
     /** The student's active card on the server, or null for none. Only meaningful when [GateStudentsData.rfidManaged]. */
     @SerializedName("rfid_uid") val rfidUid: String? = null,
+    /** Whether a parent account is linked on the server - the parent number lives on it. */
+    @SerializedName("has_parent_account") val hasParentAccount: Boolean? = null,
+    /** The linked parent's mobile number, or null. Only meaningful when [GateStudentsData.parentPhoneManaged]. */
+    @SerializedName("parent_phone") val parentPhone: String? = null,
 )
 
 data class GateStudentsData(
@@ -106,6 +118,59 @@ data class GateStudentsData(
      * doesn't send `rfid_uid` must not wipe every card here.
      */
     @SerializedName("rfid_managed") val rfidManaged: Boolean? = null,
+    /** The same for parent numbers: an older server's missing `parent_phone` must not wipe them. */
+    @SerializedName("parent_phone_managed") val parentPhoneManaged: Boolean? = null,
+)
+
+/**
+ * `/admin_set_parent_phone`: the number the gate texts go to, saved on the
+ * student's linked parent account. Null clears it. Idempotent. The server
+ * refuses (422) a student with no parent account and a non-mobile number.
+ */
+data class ParentPhoneSetRequest(
+    @SerializedName("code") val code: String,
+    @SerializedName("phone") val phone: String?,
+)
+
+data class ParentPhoneSetData(
+    @SerializedName("student_id") val studentId: Int?,
+    @SerializedName("code") val code: String?,
+    @SerializedName("phone") val phone: String?,
+)
+
+/** `/admin_gate_sms_templates` - no parameters, the school is the signed-in admin's. */
+class GateSmsTemplatesRequest
+
+/** Blank or null goes back to the default wording. */
+data class GateSmsTemplatesUpdateRequest(
+    @SerializedName("in_template") val inTemplate: String?,
+    @SerializedName("out_template") val outTemplate: String?,
+    /** The Coming In text for a late scan. Omitted by a caller that doesn't edit it (the server keeps it). */
+    @SerializedName("late_template") val lateTemplate: String? = null,
+    /** The "not arrived" text. Omitted by a caller that doesn't edit it. */
+    @SerializedName("absent_template") val absentTemplate: String? = null,
+)
+
+/**
+ * The school's parent text wording. [smsEnabled] is the platform's SMS
+ * gateway switch (a superadmin setting on the web) - while it's off no text
+ * goes out, whatever the wording.
+ */
+data class GateSmsTemplatesData(
+    @SerializedName("in_template") val inTemplate: String?,
+    @SerializedName("out_template") val outTemplate: String?,
+    @SerializedName("default_in") val defaultIn: String?,
+    @SerializedName("default_out") val defaultOut: String?,
+    /** Null from a server without late messages - the screen then hides that message. */
+    @SerializedName("late_template") val lateTemplate: String? = null,
+    @SerializedName("default_late") val defaultLate: String? = null,
+    /** Null from a server without the "not arrived" alert - the screen then hides that message. */
+    @SerializedName("absent_template") val absentTemplate: String? = null,
+    @SerializedName("default_absent") val defaultAbsent: String? = null,
+    @SerializedName("placeholders") val placeholders: List<String>?,
+    @SerializedName("max_length") val maxLength: Int?,
+    @SerializedName("school_name") val schoolName: String?,
+    @SerializedName("sms_enabled") val smsEnabled: Boolean?,
 )
 
 data class GateAttendanceScanStudentDto(

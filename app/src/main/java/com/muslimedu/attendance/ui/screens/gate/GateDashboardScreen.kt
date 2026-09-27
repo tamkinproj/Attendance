@@ -1,5 +1,7 @@
 package com.muslimedu.attendance.ui.screens.gate
 
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AlarmOn
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudOff
@@ -47,6 +50,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -99,6 +103,7 @@ fun GateDashboardScreen(
     val syncMessage by viewModel.syncMessage.collectAsState()
     val schedule by viewModel.schedule.collectAsState()
     val now by viewModel.now.collectAsState()
+    val clockWarning by viewModel.clockWarning.collectAsState()
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -108,6 +113,8 @@ fun GateDashboardScreen(
         item { Header(adminName, onAdmin) }
 
         item { SummaryCard(today, unsynced) }
+
+        clockWarning?.let { warning -> item { ClockWarningCard(warning) } }
 
         // The gate can't be used until an admin sets how many scans a day each student makes.
         if (schedule == null) item { ScheduleSetupCard(onSetUpSchedule) }
@@ -250,6 +257,18 @@ private fun SummaryCard(today: GateTodayStats, unsynced: Int) {
                     StatDivider()
                     Stat(unsynced, "Pending sync", AccentGold, Modifier.weight(1f))
                 }
+                if (today.late > 0) {
+                    Row(modifier = Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.AlarmOn, contentDescription = null, tint = AccentGold, modifier = Modifier.size(16.dp))
+                        Text(
+                            "${today.late} late arrival(s) today",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = AccentGold,
+                            modifier = Modifier.padding(start = 6.dp),
+                        )
+                    }
+                }
                 if (today.failed > 0) {
                     Text(
                         "${today.failed} failed face check(s) today - not recorded",
@@ -385,6 +404,41 @@ private fun LockedDirectionCard(direction: GateDirection, opensAt: LocalTime, mo
                 color = color,
                 modifier = Modifier.padding(top = 2.dp),
             )
+        }
+    }
+}
+
+/**
+ * The server found this phone's clock off. Every scan is stamped with it,
+ * so time in/out, Late and the parent texts would all be wrong - the card
+ * opens the phone's date & time settings.
+ */
+@Composable
+private fun ClockWarningCard(warning: String) {
+    val context = LocalContext.current
+    Card(
+        onClick = { runCatching { context.startActivity(Intent(Settings.ACTION_DATE_SETTINGS)) } },
+        shape = CardShape,
+        colors = CardDefaults.cardColors(containerColor = tint(AccentRed, 0.10f)),
+        border = BorderStroke(1.dp, tint(AccentRed, 0.3f)),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(modifier = Modifier.padding(18.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier.size(48.dp).background(AccentRed.copy(alpha = 0.14f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.Schedule, contentDescription = null, tint = AccentRed, modifier = Modifier.size(26.dp))
+            }
+            Column(modifier = Modifier.weight(1f).padding(start = 14.dp)) {
+                Text(warning, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    "Scan times, Late and parent texts will be wrong. Tap to turn on automatic date & time.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = AccentRed)
         }
     }
 }

@@ -35,6 +35,10 @@ sealed class GateSyncOutcome {
         val cardsSynced: Int = 0,
         val cardsFailed: Int = 0,
         val cardsStoppedReason: String? = null,
+        val phonesSynced: Int = 0,
+        val phonesFailed: Int = 0,
+        val phonesStoppedReason: String? = null,
+        val faces: FaceSyncOutcome = FaceSyncOutcome(),
     ) : GateSyncOutcome()
 }
 
@@ -45,7 +49,8 @@ sealed class GateSyncOutcome {
  * returns ([GateSyncScheduler]).
  *
  * In order:
- * 1. Card registrations made on this device ([RfidCardSyncManager]).
+ * 1. Card registrations and parent numbers entered on this device
+ *    ([RfidCardSyncManager], [ParentPhoneSyncManager]).
  * 2. Attendance - face-confirmed records - to `/admin_gate_attendance_scan`,
  *    one call per record, oldest first. The backend keeps a student's first
  *    "in" as their check-in time, so this stops at the first record that
@@ -56,6 +61,8 @@ sealed class GateSyncOutcome {
  * 3. Failed face checks, to `/admin_gate_rejected_scan`. Logs only, so they
  *    never hold up step 2; a server without that endpoint just leaves them
  *    waiting.
+ * 4. Registered faces shared with the school's other gate phones
+ *    ([FaceSyncManager]) - up and down, when Face Settings allows it.
  *
  * Every record carries its own event id, so an upload retried after a lost
  * response is ignored by the server rather than counted twice.
@@ -67,21 +74,25 @@ class GateSyncManager @Inject constructor(
     private val deviceSettings: DeviceSettings,
     private val tokenManager: TokenManager,
     private val rfidCardSyncManager: RfidCardSyncManager,
+    private val parentPhoneSyncManager: ParentPhoneSyncManager,
+    private val faceSyncManager: FaceSyncManager,
 ) {
     private val mutex = Mutex()
 
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
 
-    suspend fun flush(): GateSyncOutcome {
+    /** [forceFaceDownload]: fetch shared faces now (after a student list download), not at most every 5 min. */
+    suspend fun flush(forceFaceDownload: Boolean = false): GateSyncOutcome {
         if (tokenManager.getToken() == null || !deviceSettings.isBound) return GateSyncOutcome.NotSignedIn
-        return mutex.withLock { flushLocked() }
+        return mutex.withLock { flushLocked(forceFaceDownload) }
     }
 
-    private suspend fun flushLocked(): GateSyncOutcome {
+    private suspend fun flushLocked(forceFaceDownload: Boolean): GateSyncOutcome {
         _isSyncing.value = true
         return try {
             val cards = rfidCardSyncManager.flush()
+            val phones = parentPhoneSyncManager.flush()
             var uploaded = 0
             var rejected = 0
             var stoppedReason: String? = null
@@ -114,6 +125,13 @@ class GateSyncManager @Inject constructor(
                 if (syncFailedAttempt(scan, now) is StepResult.Stop) break
             }
 
+            // 4. Faces shared with the school's other gate phones - last,
+            // the biggest uploads, never in the way of attendance.
+            val faces = faceSyncManager.sync(forceFaceDownload)
+
+            // Everything that could go up went up - the web's Gate Devices page shows this as "last synced".
+            if (stoppedReason == null) deviceSettings.lastSyncOkAt = System.currentTimeMillis()
+
             GateSyncOutcome.Finished(
                 uploaded = uploaded,
                 rejected = rejected,
@@ -122,6 +140,10 @@ class GateSyncManager @Inject constructor(
                 cardsSynced = cards.synced,
                 cardsFailed = cards.failed,
                 cardsStoppedReason = cards.stoppedReason,
+                phonesSynced = phones.synced,
+                phonesFailed = phones.failed,
+                phonesStoppedReason = phones.stoppedReason,
+                faces = faces,
             )
         } finally {
             _isSyncing.value = false
@@ -146,6 +168,9 @@ class GateSyncManager @Inject constructor(
                 faceConfirmed = scan.verifiedByFace,
                 faceScore = scan.faceMatchScore,
                 deviceEventId = scan.eventId.ifEmpty { null },
+                late = scan.lateAfter?.let { scan.late },
+                minutesLate = scan.minutesLate,
+                lateAfter = scan.lateAfter,
             ),
         )
         if (response.success) {

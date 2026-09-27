@@ -88,6 +88,25 @@ class StudentRepository @Inject constructor(
         )
     }
 
+    /** Re-queues parent numbers the server refused, e.g. after a parent account was linked on the web. */
+    suspend fun retryFailedPhones() = studentDao.retryFailedPhones(deviceSettings.schoolId.value)
+
+    /**
+     * Saves [phone] (already normalized, see normalizePhMobile) as the number
+     * [student]'s gate texts go to, or removes it with null - here at once,
+     * on the parent's server account when it can be sent
+     * ([com.muslimedu.attendance.sync.ParentPhoneSyncManager]).
+     */
+    suspend fun setParentPhone(student: StudentEntity, phone: String?) {
+        studentDao.setParentPhonePending(student.schoolId, student.studentId, phone, System.currentTimeMillis())
+        auditLogger.log(
+            action = AuditLogger.ACTION_PARENT_PHONE_SET,
+            entityType = "student",
+            entityId = student.studentId,
+            details = if (phone != null) "parentPhone=***${phone.takeLast(4)}" else "parentPhone removed",
+        )
+    }
+
     suspend fun reload(student: StudentEntity): StudentEntity? = find(student.schoolId, student.studentId)
 
     suspend fun find(schoolId: Int, studentId: Int): StudentEntity? =

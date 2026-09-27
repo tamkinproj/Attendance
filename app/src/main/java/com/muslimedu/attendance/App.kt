@@ -8,6 +8,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.muslimedu.attendance.sync.DeviceHealthReporter
 import com.muslimedu.attendance.sync.SyncWorker
 import dagger.hilt.android.HiltAndroidApp
 import java.util.concurrent.TimeUnit
@@ -19,6 +20,9 @@ class App : Application(), Configuration.Provider {
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
 
+    @Inject
+    lateinit var deviceHealthReporter: DeviceHealthReporter
+
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setWorkerFactory(workerFactory)
@@ -27,6 +31,8 @@ class App : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         schedulePeriodicSync()
+        // The web's Gate Devices page: battery, reader, uploads, clock - every few minutes while the app runs.
+        deviceHealthReporter.start()
     }
 
     /**

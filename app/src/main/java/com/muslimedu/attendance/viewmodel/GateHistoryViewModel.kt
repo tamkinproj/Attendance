@@ -22,6 +22,7 @@ enum class GateHistoryFilter(val label: String) {
     All("All"),
     In("Coming In"),
     Out("Going Out"),
+    Late("Late"),
     Failed("Face failed"),
 }
 
@@ -51,6 +52,7 @@ class GateHistoryViewModel @Inject constructor(
                 GateHistoryFilter.All -> scans
                 GateHistoryFilter.In -> scans.filter { it.outcome == GateScanEntity.OUTCOME_RECORDED && it.direction == GateScanEntity.DIRECTION_IN }
                 GateHistoryFilter.Out -> scans.filter { it.outcome == GateScanEntity.OUTCOME_RECORDED && it.direction == GateScanEntity.DIRECTION_OUT }
+                GateHistoryFilter.Late -> scans.filter { it.outcome == GateScanEntity.OUTCOME_RECORDED && it.late }
                 GateHistoryFilter.Failed -> scans.filter { it.outcome == GateScanEntity.OUTCOME_REJECTED }
             }
         }

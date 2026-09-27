@@ -33,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -96,6 +97,12 @@ fun LiveFaceCaptureView(
     /** A captured frame is being checked: the overlay shows its full ring. */
     busy: Boolean = false,
     accent: Color = BrandPrimary,
+    /**
+     * Only frames whose head yaw (ML Kit's Euler Y, degrees) this accepts
+     * count towards a capture - enrollment asks for a straight face, then a
+     * turn to each side. Null: any angle (the gate).
+     */
+    acceptYaw: ((Float) -> Boolean)? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -180,6 +187,8 @@ fun LiveFaceCaptureView(
         )
     }
     val gate = remember { AutoCaptureGate() }
+    // Read on the analysis thread; updated here so a new angle applies to the running camera.
+    SideEffect { gate.acceptYaw = acceptYaw }
 
     // A new captureKey starts a fresh capture on the camera that's already running.
     LaunchedEffect(captureKey) {
@@ -218,12 +227,13 @@ fun LiveFaceCaptureView(
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
                 analysis.setAnalyzer(analysisExecutor) { imageProxy ->
-                    analyzeFrame(imageProxy, gate, fastDetector) { bitmap, score ->
+                    analyzeFrame(imageProxy, gate, fastDetector) { bitmap, score, angleOk ->
                         scope.launch(Dispatchers.Main.immediate) {
                             if (captured) return@launch
 
                             faceSeen = score != null
-                            if (score != null && score > bestScore) {
+                            // The timeout fallback below may only settle for a frame at the asked angle.
+                            if (score != null && angleOk && score > bestScore) {
                                 bestScore = score
                                 bestFrame = bitmap
                             }
@@ -235,6 +245,7 @@ fun LiveFaceCaptureView(
 
                             statusText = when {
                                 score == null -> PROMPT_NO_FACE
+                                !angleOk -> "Turn your head as asked"
                                 goodFrames > 0 -> "Hold still... ($goodFrames/${AutoCaptureGate.REQUIRED_FRAMES})"
                                 else -> "Hold still - keep your eyes open"
                             }
@@ -350,6 +361,9 @@ private class AutoCaptureGate {
 
     @Volatile var consecutiveGoodFrames = 0
 
+    /** See LiveFaceCaptureView's acceptYaw. */
+    @Volatile var acceptYaw: ((Float) -> Boolean)? = null
+
     companion object {
         const val MIN_FRAME_INTERVAL_MS = 300L
         const val REQUIRED_FRAMES = 3
@@ -385,7 +399,7 @@ private fun analyzeFrame(
     imageProxy: ImageProxy,
     gate: AutoCaptureGate,
     detector: FaceDetector,
-    onResult: (bitmap: Bitmap, livenessScore: Float?) -> Unit,
+    onResult: (bitmap: Bitmap, livenessScore: Float?, angleOk: Boolean) -> Unit,
 ) {
     val now = System.currentTimeMillis()
     if (now - gate.lastProcessedAt < AutoCaptureGate.MIN_FRAME_INTERVAL_MS) {
@@ -403,10 +417,12 @@ private fun analyzeFrame(
 
     detector.process(InputImage.fromBitmap(bitmap, 0))
         .addOnSuccessListener { faces ->
-            val score = faces.firstOrNull()?.let { LivenessDetector.score(it) }
-            val isLive = score != null && score >= AutoCaptureGate.LIVENESS_GATE_SCORE
+            val face = faces.firstOrNull()
+            val score = face?.let { LivenessDetector.score(it) }
+            val angleOk = face != null && (gate.acceptYaw?.invoke(face.headEulerAngleY) ?: true)
+            val isLive = score != null && angleOk && score >= AutoCaptureGate.LIVENESS_GATE_SCORE
             gate.consecutiveGoodFrames = if (isLive) gate.consecutiveGoodFrames + 1 else 0
-            onResult(bitmap, score)
+            onResult(bitmap, score, angleOk)
         }
         .addOnFailureListener {
             gate.consecutiveGoodFrames = 0

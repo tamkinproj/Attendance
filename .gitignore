@@ -54,3 +54,8 @@ logs/
 # NPM (if used for any tooling)
 node_modules/
 npm-debug.log
+
+# Signing keys - never commit (this repo is public). CI gets the gate key from secrets.
+*.jks
+*.keystore
+*.p12

@@ -33,6 +33,7 @@ import com.muslimedu.attendance.ui.screens.admin.AdminPinScreen
 import com.muslimedu.attendance.ui.screens.admin.AuditLogScreen
 import com.muslimedu.attendance.ui.screens.admin.GateAdminScreen
 import com.muslimedu.attendance.ui.screens.admin.GateScheduleScreen
+import com.muslimedu.attendance.ui.screens.admin.ParentSmsScreen
 import com.muslimedu.attendance.ui.screens.admin.SettingsScreen
 import com.muslimedu.attendance.ui.screens.admin.StudentListScreen
 import com.muslimedu.attendance.ui.screens.auth.LoginScreen
@@ -46,6 +47,7 @@ import com.muslimedu.attendance.viewmodel.AdminPinViewModel
 import com.muslimedu.attendance.viewmodel.AuthState
 import com.muslimedu.attendance.viewmodel.AuthViewModel
 import com.muslimedu.attendance.viewmodel.GateDirection
+import com.muslimedu.attendance.viewmodel.RegistrationStart
 import com.muslimedu.attendance.viewmodel.RegistrationTarget
 
 /**
@@ -87,7 +89,8 @@ private enum class Screen(val title: String, val requiresUnlock: Boolean) {
     AdminPin("Admin", false),
     AdminHome("Admin", true),
     Students("Students", true),
-    Register("Register Card & Face", true),
+    Register("Register Student", true),
+    ParentSms("Parent SMS", true),
     GateSchedule("Gate Schedule", true),
     FaceSettings("Face Verification Settings", true),
     AuditLog("Audit Log", true),
@@ -163,9 +166,10 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
     val shown = if (screen.requiresUnlock && !adminUnlocked) Screen.AdminPin else screen
 
     // These draw their own header: the dashboard has its large title and
-    // admin button, and the RFID scan screens handle back themselves (they
-    // ask before leaving with unsynced attendance).
-    val ownsChrome = shown == Screen.Gate || shown == Screen.GateIn || shown == Screen.GateOut
+    // admin button, the RFID scan screens handle back themselves (they ask
+    // before leaving with unsynced attendance), and the Register wizard's
+    // face step takes the whole screen.
+    val ownsChrome = shown == Screen.Gate || shown == Screen.GateIn || shown == Screen.GateOut || shown == Screen.Register
 
     BackHandler(enabled = !ownsChrome) { navigate(parentOf(shown)) }
 
@@ -235,6 +239,7 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
                     user = user,
                     onStudents = { navigate(Screen.Students) },
                     onRegister = { openRegistration(null) },
+                    onParentSms = { navigate(Screen.ParentSms) },
                     onGateSchedule = {
                         scheduleFromGate = false
                         navigate(Screen.GateSchedule)
@@ -245,17 +250,20 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel) {
                     onChangePin = { navigate(Screen.ChangePin) },
                 )
                 Screen.Students -> StudentListScreen(
-                    onRegisterFace = { student -> openRegistration(RegistrationTarget(student, startAtFace = true)) },
-                    onAssignCard = { student -> openRegistration(RegistrationTarget(student, startAtFace = false)) },
+                    onRegisterFace = { student -> openRegistration(RegistrationTarget(student, RegistrationStart.FACE)) },
+                    onAssignCard = { student -> openRegistration(RegistrationTarget(student, RegistrationStart.CARD)) },
+                    onParentPhone = { student -> openRegistration(RegistrationTarget(student, RegistrationStart.PHONE)) },
                 )
                 Screen.Register -> StudentRegistrationScreen(
                     target = registerTarget,
                     requestId = registerRequestId,
                     onFinish = { navigate(parentOf(Screen.Register)) },
+                    onBack = { navigate(parentOf(Screen.Register)) },
                 )
                 Screen.GateSchedule -> GateScheduleScreen(onSaved = { navigate(parentOf(Screen.GateSchedule)) })
                 Screen.FaceSettings -> SettingsScreen()
                 Screen.AuditLog -> AuditLogScreen()
+                Screen.ParentSms -> ParentSmsScreen()
                 Screen.Sync -> SyncScreen(user = user, onLogout = authViewModel::logout)
                 Screen.ResetPinLogin -> LoginScreen(
                     subtitle = "Sign in again with a school admin account to reset this device's PIN",

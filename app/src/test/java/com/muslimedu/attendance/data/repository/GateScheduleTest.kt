@@ -5,6 +5,7 @@ import com.muslimedu.attendance.data.db.entities.GateScanEntity.Companion.DIRECT
 import com.muslimedu.attendance.data.db.entities.GateScanEntity.Companion.DIRECTION_OUT
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalTime
@@ -114,5 +115,76 @@ class GateScheduleTest {
         assertFalse(GateSchedule.timesInOrder(listOf(t("06:00"), t("11:00")), listOf(t("12:00"), t("16:00"))))
         assertFalse(GateSchedule.timesInOrder(listOf(t("06:00")), listOf(t("06:00"))))
         assertTrue(GateSchedule.timesInOrder(wholeDay.inTimes, wholeDay.outTimes))
+    }
+
+    private val lateWholeDay = wholeDay.copy(lateAfter = listOf(t("07:30"), t("13:00")))
+
+    @Test
+    fun `a Coming In after its late time is late by whole minutes`() {
+        assertEquals(null, GateSchedule.minutesLate(lateWholeDay, DIRECTION_IN, 1, t("07:30")))
+        assertEquals(null, GateSchedule.minutesLate(lateWholeDay, DIRECTION_IN, 1, LocalTime.of(7, 30, 59)))
+        assertEquals(1, GateSchedule.minutesLate(lateWholeDay, DIRECTION_IN, 1, t("07:31")))
+        assertEquals(22, GateSchedule.minutesLate(lateWholeDay, DIRECTION_IN, 1, t("07:52")))
+        // Back from lunch has its own late time.
+        assertEquals(null, GateSchedule.minutesLate(lateWholeDay, DIRECTION_IN, 2, t("12:55")))
+        assertEquals(10, GateSchedule.minutesLate(lateWholeDay, DIRECTION_IN, 2, t("13:10")))
+    }
+
+    @Test
+    fun `never late without a late time, and never on the way out`() {
+        assertEquals(null, GateSchedule.minutesLate(wholeDay, DIRECTION_IN, 1, t("10:00")))
+        assertEquals(null, GateSchedule.minutesLate(null, DIRECTION_IN, 1, t("10:00")))
+        assertEquals(null, GateSchedule.minutesLate(lateWholeDay, DIRECTION_OUT, 1, t("16:30")))
+        val firstOnly = wholeDay.copy(lateAfter = listOf(t("07:30"), null))
+        assertEquals(null, GateSchedule.minutesLate(firstOnly, DIRECTION_IN, 2, t("15:00")))
+    }
+
+    @Test
+    fun `a schedule saved before late checks has none`() {
+        assertEquals(listOf(null, null), wholeDay.lateAfter)
+        assertFalse(wholeDay.lateCheckOn)
+        assertTrue(lateWholeDay.lateCheckOn)
+    }
+
+    @Test
+    fun `default late times - 90 minutes after the first opening, 30 after the others`() {
+        assertEquals(listOf(t("07:30")), GateSchedule.defaultLateAfter(morningOnly.inTimes, morningOnly.outTimes))
+        assertEquals(listOf(t("07:30"), t("13:00")), GateSchedule.defaultLateAfter(wholeDay.inTimes, wholeDay.outTimes))
+        // No room before the Going Out: no default.
+        assertEquals(listOf(null), GateSchedule.defaultLateAfter(listOf(t("06:00")), listOf(t("07:00"))))
+        for (perDay in GateSchedule.MIN_PER_DAY..GateSchedule.MAX_PER_DAY) {
+            val (inTimes, outTimes) = GateSchedule.defaultTimes(perDay)
+            assertTrue(GateSchedule.lateAfterValid(inTimes, outTimes, GateSchedule.defaultLateAfter(inTimes, outTimes)))
+        }
+    }
+
+    @Test
+    fun `a late time must fall inside its Coming In`() {
+        assertTrue(GateSchedule.lateAfterValid(wholeDay.inTimes, wholeDay.outTimes, listOf(t("06:00"), null)))
+        assertFalse(GateSchedule.lateAfterValid(wholeDay.inTimes, wholeDay.outTimes, listOf(t("05:59"), null)))
+        assertFalse(GateSchedule.lateAfterValid(wholeDay.inTimes, wholeDay.outTimes, listOf(t("11:30"), null)))
+        assertFalse(GateSchedule.lateAfterValid(wholeDay.inTimes, wholeDay.outTimes, listOf(t("07:30"))))
+    }
+
+    // ── "Not arrived" cutoff ─────────────────────────────────────────
+
+    @Test
+    fun `not-arrived time starts an hour after the late time, else three hours after opening`() {
+        val morning = listOf(t("06:00")) to listOf(t("11:00"))
+        assertEquals(t("08:30"), GateSchedule.defaultAbsenceCutoff(morning.first, morning.second, listOf(t("07:30"))))
+        assertEquals(t("09:00"), GateSchedule.defaultAbsenceCutoff(morning.first, morning.second, listOf(null)))
+        // Doesn't fit before Going Out: halfway instead.
+        assertEquals(t("07:00"), GateSchedule.defaultAbsenceCutoff(listOf(t("06:00")), listOf(t("08:00")), listOf(null)))
+    }
+
+    @Test
+    fun `not-arrived time must be after the opening and the late time and before Going Out`() {
+        val ins = listOf(t("06:00"))
+        val outs = listOf(t("11:00"))
+        assertNull(GateSchedule.absenceCutoffProblem(t("09:00"), ins, outs, listOf(t("07:30"))))
+        assertNull(GateSchedule.absenceCutoffProblem(t("06:01"), ins, outs, listOf(null)))
+        assertTrue(GateSchedule.absenceCutoffProblem(t("06:00"), ins, outs, listOf(null))!!.contains("after Coming In 1 opens (6:00 AM)"))
+        assertTrue(GateSchedule.absenceCutoffProblem(t("07:30"), ins, outs, listOf(t("07:30")))!!.contains("after Late after (7:30 AM)"))
+        assertTrue(GateSchedule.absenceCutoffProblem(t("11:00"), ins, outs, listOf(null))!!.contains("before Going Out 1 opens (11:00 AM)"))
     }
 }

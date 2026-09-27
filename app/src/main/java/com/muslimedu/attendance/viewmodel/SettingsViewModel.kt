@@ -13,6 +13,9 @@ class SettingsViewModel @Inject constructor(
 
     val minMatchScore: StateFlow<Float> = settingsRepository.minMatchScore
     val livenessThreshold: StateFlow<Float> = settingsRepository.livenessThreshold
+    val shareFaces: StateFlow<Boolean> = settingsRepository.shareFaces
+
+    fun setShareFaces(value: Boolean) = settingsRepository.setShareFaces(value)
 
     fun setMinMatchScore(value: Float) = settingsRepository.setMinMatchScore(value)
 

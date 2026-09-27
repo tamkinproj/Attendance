@@ -67,6 +67,12 @@ data class GateScanEntity(
     val outcome: String = OUTCOME_RECORDED,
     @ColumnInfo(name = "failure_reason") val failureReason: String? = null,
     @ColumnInfo(name = "event_id") val eventId: String = "",
+    // v11: the late check on a Coming In. [lateAfter] ("HH:mm") is the time
+    // it was checked against - null when that Coming In has no late check,
+    // so "on time" (late false, lateAfter set) differs from "not checked".
+    @ColumnInfo(name = "is_late") val late: Boolean = false,
+    @ColumnInfo(name = "minutes_late") val minutesLate: Int? = null,
+    @ColumnInfo(name = "late_after") val lateAfter: String? = null,
 ) {
     /** Attendance only when both checks passed - what a teacher can sync into class attendance. */
     val isVerifiedAttendance: Boolean get() = outcome == OUTCOME_RECORDED && rfidVerified && verifiedByFace

@@ -65,8 +65,10 @@ fun GateHistoryScreen(viewModel: GateHistoryViewModel = hiltViewModel()) {
                 }
             }
             val recorded = records.count { it.outcome == GateScanEntity.OUTCOME_RECORDED }
+            val late = records.count { it.outcome == GateScanEntity.OUTCOME_RECORDED && it.late }
             Text(
                 "${displayDate(date)} · $recorded recorded" +
+                    late.takeIf { it > 0 }?.let { " · $it late" }.orEmpty() +
                     (records.size - recorded).takeIf { it > 0 }?.let { " · $it failed face check(s)" }.orEmpty(),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

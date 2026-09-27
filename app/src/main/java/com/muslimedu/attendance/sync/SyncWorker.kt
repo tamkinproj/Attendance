@@ -15,7 +15,8 @@ import dagger.assisted.AssistedInject
  * be in the foreground. Runs every 15 minutes (scheduled from
  * [com.muslimedu.attendance.App]) and once as soon as the network returns
  * after a record is saved offline ([GateSyncScheduler]). [GateSyncManager]
- * includes card registrations.
+ * includes card registrations; the device-health report
+ * ([DeviceHealthReporter]) follows each run.
  */
 @HiltWorker
 class SyncWorker @AssistedInject constructor(
@@ -23,6 +24,7 @@ class SyncWorker @AssistedInject constructor(
     @Assisted params: WorkerParameters,
     private val syncQueueManager: SyncQueueManager,
     private val gateSyncManager: GateSyncManager,
+    private val deviceHealthReporter: DeviceHealthReporter,
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result = try {
@@ -30,6 +32,8 @@ class SyncWorker @AssistedInject constructor(
         // Classroom attendance is no longer recorded in the app, but rows
         // left over from before gate-only mode still get their chance.
         syncQueueManager.flush()
+        // Keeps the gate "online" on the web's Gate Devices page even with the app closed.
+        deviceHealthReporter.report()
         Result.success()
     } catch (e: Exception) {
         Result.retry()
