@@ -1073,6 +1073,57 @@ translations SQL; no server change).
   (rtl, translated, arrows flipped). The test school was made a markaz and
   given the teacher two classes for the run, then put back.
 
+### Qur'an Tracker: days in the current mode (web only - not in this repo)
+
+Follow-up ask: track what day / how many days it has been since a
+student's mode last changed (e.g. moved to Tasmee' - reciting to the
+teacher instead of a new lesson), so a student left reviewing or
+reciting-to-teacher for weeks stands out from one who just got there.
+Delivered as a small patch on top of `quran-wizard-update.zip` (needs it
+first) - one migration, one model, one controller, three web files, plus
+an optional Arabic SQL for the new strings only.
+
+- **`quran_student_progress.mode_changed_at`** (new nullable timestamp,
+  migration `2026_09_28_000001`) - stamped only when `mode` actually
+  changes, in both places that set it: `advancePosition()` (every session
+  save - `mode` follows the latest session type, see that method's own doc
+  comment) and `updateProgress()` (an admin/teacher correction). Re-saving
+  the *same* mode never moves it, which is the whole point - a student
+  reciting Tasmee' every day for two weeks should show "14 days", not
+  reset to "today" on each session. Existing rows (no history of when
+  their mode last changed) are backfilled from `updated_at`/`created_at`
+  by the migration, not left null.
+- **`QuranTrackerController::shapeProgress()`** adds `mode_changed_at`
+  (`Y-m-d`) and `days_in_mode` (whole days via `diffInDays`, 0 = today) to
+  the same payload the dashboard, student profile and session-save
+  response already return - no new endpoint.
+- **Web**: `quran-tracker.js` (wizard's `whoHtml()`, shown on steps 2-5)
+  and `quran-student.js` (the profile page's mode mini-chip) both show
+  "Tasmee' · 9 days" / "New lesson · today" (`modeDaysText()` /
+  `modeDaysLabel()`). A student whose mode is anything other than
+  `new_hifz` (or `paused`, already flagged by its own status) for 14+ days
+  (`QW_STUCK_DAYS`/`QS_STUCK_DAYS`) gets an amber "stuck" style - `new_hifz`
+  is never flagged this way, since staying there a while memorizing is
+  normal. Both pages tolerate a null `days_in_mode` (an old cached payload
+  from before this shipped) by showing the mode label alone rather than
+  crashing.
+- `quran-mode-days-arabic.sql`: the 6 new `quran_wizard.mode_*` /
+  `quran_student.mode_*` keys only - run after (or instead of re-running)
+  `quran-wizard-arabic.sql`; same safe-to-run-again DELETE-then-INSERT
+  shape.
+- Verified: a real-Eloquent check against the webtest DB (new row gets
+  stamped immediately, a real mode change moves it forward, re-saving the
+  same mode does not, a null old-style row doesn't break the shaper), an
+  HTTP round trip through `quran_tracker_session_save` confirming the
+  fields appear end-to-end, and 18 direct checks of the new JS helpers
+  (`modeDaysText`/`modeIsStuck`/`modeDaysLabel`, singular/plural/null/no-
+  mode text, the 13-vs-14-day stuck boundary, `new_hifz` never flagged,
+  the rendered `whoHtml()` markup) - run without depending on the live
+  page's admin setup-checklist gate, which was in an unrelated
+  incomplete state in the sandbox at the time. Not driven through the full
+  logged-in page in this pass; the JS is the same code the already-tested
+  wizard page loads unchanged otherwise.
+
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
   teal - used for the logo, gradients, big icons. It's only ~3.4:1 on white,
