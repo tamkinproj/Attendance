@@ -1029,6 +1029,50 @@ and the fix:
   teacher, cashier, registrar, alumni, parent, superadmin
   (`e2e/offline-roles.js`); web door 18 and Gate Reports 46 still pass.
 
+### Qur'an Tracker wizard (web only - not in this repo)
+
+The user asked for the web Qur'an Tracker to be simple and interactive,
+"like a game wizard", with no new features, because some teachers are
+old. Delivered as `quran-wizard-update.zip` (3 files in `v2/` + an Arabic
+translations SQL; no server change).
+- `quran-tracker.php/js` (teacher dashboard > Quran Progress, also admins)
+  is now a 5-step wizard, one question per screen, big targets (26px
+  questions, 150px tiles, 60-64px buttons): Student (tiles with where each
+  student is) -> Lesson (New lesson / Review / Recite to me / Fix weak parts
+  = new_hifz / murajaah / tasmee / revision) -> Ayahs (pre-filled: not
+  started = Al-Fatihah 1-5, new lesson = next 5 ayahs after the position or
+  the next surah, review = 1 to the position; big -/+ steppers clamped to
+  the surah, full-screen searchable surah list) -> Result (4 big coloured
+  buttons) -> Save (one-sentence summary; optional tap-to-count mistake
+  chips, note + "parents can see" only once a note is typed, "another
+  day?" link). Then a celebration (confetti for a pass, new position from
+  the save response) with Next student / Another lesson. Phone back steps
+  back (`history.pushState`), students done on the page get a Done badge.
+  Offline saves show "Saved on this device" (offline-data queue).
+  Right-to-left works (`inset-inline-end`, `text-align: start`, arrows
+  flipped by `.qw-flip`).
+- `quran-student.js`: Record Session / the hero card open the wizard with
+  `?student_id=` (starts at step 2); the old sheet is gone.
+- **Bug fixed on the way**: the old sheet sent `mistakes: [{type, count}]`,
+  but `QuranTrackerController::recordSession` validates
+  `mistakes.*.mistake_type`, so every session saved with a mistake got a
+  422 (reproduced). The wizard sends `mistake_type`.
+- Dropped from the teacher's page (still on the profile / admin Qur'an
+  pages): the status summary chips and status/mode chips on the list.
+- `quran-wizard-arabic.sql`: 87 `quran_wizard.*` keys + the Offline & Sync
+  tile text in `academic_translations`. Starts with `SET NAMES utf8mb4`
+  (a latin1 client stored mojibake without it) and deletes its own rows
+  first: the unique key includes `school_id`, which is NULL for these
+  platform rows, so `ON DUPLICATE KEY` never matches and a re-run
+  duplicated every row (true of the app's other *_arabic_translations.sql
+  files too).
+- Verified: 51 Chromium checks at 390px (`e2e/quran-wizard.js`) as a
+  teacher (every step, prefills, limits, surah search, mistakes/note in the
+  DB, position only moving on a passed new lesson, back button, profile
+  Record button, offline save + upload), an admin, and an Arabic teacher
+  (rtl, translated, arrows flipped). The test school was made a markaz and
+  given the teacher two classes for the run, then put back.
+
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
   teal - used for the logo, gradients, big icons. It's only ~3.4:1 on white,
