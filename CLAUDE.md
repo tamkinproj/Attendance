@@ -1124,6 +1124,94 @@ an optional Arabic SQL for the new strings only.
   logged-in page in this pass; the JS is the same code the already-tested
   wizard page loads unchanged otherwise.
 
+### Scholarship staff review queues (web only - not in this repo)
+
+Follow-up ask, after the Qur'an wizard: two more staff review screens made
+"interactive like a game" the same way - a review-queue shape, same
+audience (staff working through a list one decision at a time) as Take
+Attendance's swipe cards. Delivered as `scholarship-review-queues-update.zip`
+(3 web files only - no server or database change, every server call this
+uses already existed).
+
+- **Document Review** (`scholarship-document-review.php/js`, Document
+  Review's `pending` filter only - the actionable queue): replaces the
+  list + review sheet with a swipeable card stack, identical drag/edge
+  mechanics to `teacher-attendance.js`'s manual roster (`.att-swipe-*`
+  classes reused as-is, nothing new in `dashboard.css`) - one document at
+  a time, right = Approve, left = Reject, up = Request Revision (a fixed
+  3-way map, `DOC_SWIPE_DIRS`, not attendance's configurable status list -
+  a document only ever has these 3 outcomes). The one real difference
+  from attendance's batch flow: **every swipe calls
+  `reviewScholarshipDocument()` immediately** - there's no "Save" step,
+  each document is its own independent record - and a failed call snaps
+  the card back instead of advancing (`attachQueueSwipeHandlers`'s `busy`
+  flag blocks a second gesture mid-request). Big buttons under the edges
+  do the same thing as a drag, for anyone who'd rather tap. Clearing the
+  queue shows "All caught up!". Browsing already-decided documents
+  (Approved/Rejected/Revision Requested tabs) is untouched - still the
+  original plain list + review sheet, since there's nothing left to
+  decide there.
+- **Scholarship Applications** (`scholarship-applications.php/js`): a
+  decision here isn't reducible to a 3-way swipe - 5 possible statuses, a
+  per-item checklist that should actually be checked before deciding, and
+  an optional Assign - so this is a **step wizard**, same shape as the
+  Qur'an Tracker (its own `.sa-*` CSS block in `scholarship-applications.php`,
+  copied and trimmed from `quran-tracker.php`'s `.qw-*` block since each
+  page's `<style>` is scoped to that page only - no shared file, no
+  collision risk). A new "Review Queue (N)" button above the list snapshots
+  whatever's currently filtered/searched (`currentlyFiltered()`, the same
+  logic the plain list already used) and opens a full-screen overlay:
+  **Review** (the checklist, `reviewScholarshipChecklistItem()` per toggle,
+  a live "N of M required items checked" line) -> **Decide** (4 big
+  colored buttons, `DECISION_OPTIONS`, filtered to exclude the current
+  status - tapping one reveals an optional note and enables Confirm,
+  `advanceScholarshipApplicationStatus()`) -> **Done** (confetti only on
+  Approved, "Next application" or "Back to list"). The on-screen back
+  arrow steps back one wizard step at a time, or closes the overlay from
+  step 1 - deliberately **not** wired to the phone/browser back button
+  (this page already owns the URL query string for a program-filter deep
+  link from Gate Reports; a second consumer of `history` risked fighting
+  that, so the overlay's own header arrow is the only way back). The
+  original list, filters, search, and "tap a row for a quick look" sheet
+  are all unchanged underneath - the queue is additive.
+- **Two real bugs found and fixed while testing against seeded data, not
+  something this ask required but sitting directly in the code being
+  touched**:
+  - `scholarship-applications.js` called a `fetchScholarshipAccess()` that
+    doesn't exist anywhere in `dashboard.js` - a straight `ReferenceError`
+    thrown synchronously inside the `guardDashboard` callback, which
+    silently aborted page boot before `reload()` ever ran (the list, the
+    filters, the new queue button - none of it rendered, on every load,
+    since this page shipped). Fixed to call the real listing,
+    `fetchSuperAdminStaff()` (same shape `superadmin-staff.js` already
+    uses).
+  - The application detail payload's real keys are `checklist_items` /
+    `status_history` (confirmed by reading the actual
+    `admin_scholarship_application_show` response, not assumed) - both
+    `renderDetailContent()` and the new Review step were reading
+    `checklistItems`/`statusHistory` (camelCase), so the Checklist and
+    Status History sections of the existing detail sheet have **always**
+    shown "No checklist items."/"No status changes yet." for every real
+    application, since this page shipped. Fixed in both places.
+- Verified: 24 checks in real Chromium against the webtest app, signed in
+  as the primary SuperAdmin (`super@test.local` - the only role besides
+  platform_staff these pages are gated on, and, usefully, the one role
+  **not** subject to `runAdminSetupGate` - that only fires for
+  `user.role === 'admin'`, so this ran clean despite this sandbox's
+  unrelated incomplete-setup fixture state that blocked the earlier
+  Qur'an-tracker pass): the whole Document Review queue (each of
+  right/left/up commits, removes the card, and lands the right status in
+  `user_documents`; the non-pending tabs still show the plain list); the
+  whole Applications wizard (a checklist toggle persists server-side, the
+  progress line updates, Decide's Confirm only enables once a status is
+  picked, Done names the right status and confetti fires only for
+  Approved, "Next application" advances the snapshot queue, the back
+  arrow steps back one screen then closes the overlay, and the real
+  `scholarship_applications.status`/`scholarship_application_status_history`/
+  `scholarship_application_checklist_items` rows all land correctly). Test
+  data (a provider/program/requirements/3 applications/3 documents) seeded
+  and cleaned up in the sandbox DB only. Not tested on the real server.
+
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
   teal - used for the logo, gradients, big icons. It's only ~3.4:1 on white,
