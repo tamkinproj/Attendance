@@ -79,9 +79,11 @@ class GateSummaryTest {
     @Test
     fun `stepping forward is capped at today, like the web's Gate Reports`() {
         val today = LocalDate.parse("2026-09-24") // within this week
-        assertTrue(GateSummary.canStepForward(GateSummaryPeriod.Week, today, today))
-        val nextWeekAnchor = GateSummary.shiftAnchor(GateSummaryPeriod.Week, today, forward = true)
-        assertFalse(GateSummary.canStepForward(GateSummaryPeriod.Week, nextWeekAnchor, today))
+        // Already viewing the week that contains today - there's nothing
+        // beyond today to step into yet, so the forward arrow is disabled.
+        assertFalse(GateSummary.canStepForward(GateSummaryPeriod.Week, today, today))
+        val lastWeekAnchor = GateSummary.shiftAnchor(GateSummaryPeriod.Week, today, forward = false)
+        assertTrue(GateSummary.canStepForward(GateSummaryPeriod.Week, lastWeekAnchor, today))
     }
 
     @Test
