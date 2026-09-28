@@ -2,14 +2,29 @@ package com.muslimedu.attendance.ui.navigation
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.HowToReg
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Sms
+import androidx.compose.material.icons.filled.Tablet
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -24,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -112,6 +128,51 @@ private enum class Screen(val title: String, val requiresUnlock: Boolean) {
 }
 
 /**
+ * The Admin tools a tablet's [NavigationRail] switches between (see
+ * [AdminNavigationRail]) - the same set [GateAdminScreen]'s tile grid
+ * already links to, just reachable without a trip back through
+ * [Screen.AdminHome] each time. [Register] is included for parity with the
+ * grid even though the wizard screen itself never shows the rail (it owns
+ * its own full-screen chrome, like [Screen.Register] does everywhere else).
+ */
+private enum class AdminSection(val icon: ImageVector, val label: String, val screen: Screen) {
+    Dashboard(Icons.Filled.AdminPanelSettings, "Dashboard", Screen.AdminHome),
+    Register(Icons.Filled.HowToReg, "Register", Screen.Register),
+    Students(Icons.Filled.People, "Students", Screen.Students),
+    Summary(Icons.Filled.CalendarToday, "Summary", Screen.AttendanceSummary),
+    ParentSms(Icons.Filled.Sms, "Parent SMS", Screen.ParentSms),
+    Schedule(Icons.Filled.Schedule, "Schedule", Screen.GateSchedule),
+    Sync(Icons.Filled.CloudSync, "Sync", Screen.Sync),
+    FaceSettings(Icons.Filled.Tune, "Face", Screen.FaceSettings),
+    AuditLog(Icons.Filled.History, "Audit Log", Screen.AuditLog),
+    ChangePin(Icons.Filled.Lock, "Change PIN", Screen.ChangePin),
+    Kiosk(Icons.Filled.Tablet, "Kiosk", Screen.KioskMode),
+}
+
+/**
+ * A persistent side rail for switching between Admin tools on a tablet -
+ * the "nav rail ... for Admin screens on a tablet that isn't in kiosk mode"
+ * follow-up to Kiosk Mode (which only handles the locked-down stand
+ * scenario). Purely a faster way to reach the same destinations
+ * [GateAdminScreen]'s tile grid already does - it doesn't replace that grid
+ * (still shown as the content pane at [Screen.AdminHome]) or change what
+ * "back" does from any tool ([parentOf] is untouched).
+ */
+@Composable
+private fun AdminNavigationRail(current: Screen, onSelect: (Screen) -> Unit) {
+    NavigationRail {
+        AdminSection.entries.forEach { section ->
+            NavigationRailItem(
+                selected = current == section.screen,
+                onClick = { onSelect(section.screen) },
+                icon = { Icon(section.icon, contentDescription = section.label) },
+                label = { Text(section.label) },
+            )
+        }
+    }
+}
+
+/**
  * The signed-in app. A state-driven switch rather than Navigation Compose:
  * every screen is at most two levels deep (gate -> admin -> tool), so "back"
  * is a fixed parent per screen ([parentOf]), not a history stack.
@@ -167,6 +228,23 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel, isTabletDevice:
         navigate(Screen.Register)
     }
 
+    // The tablet nav rail's own entry point - mirrors GateAdminScreen's tile
+    // onClick lambdas (Register goes through the wizard's own request-id
+    // plumbing, Gate Schedule is always "from Admin" since the rail is only
+    // ever shown once already inside Admin) rather than a bare `navigate()`,
+    // so switching tools from the rail behaves exactly like tapping the
+    // matching tile would have.
+    fun navigateFromRail(target: Screen) {
+        when (target) {
+            Screen.Register -> openRegistration(null)
+            Screen.GateSchedule -> {
+                scheduleFromGate = false
+                navigate(Screen.GateSchedule)
+            }
+            else -> navigate(target)
+        }
+    }
+
     fun parentOf(current: Screen): Screen = when (current) {
         Screen.Gate, Screen.GateIn, Screen.GateOut, Screen.GateHistory, Screen.AdminPin, Screen.AdminHome -> Screen.Gate
         Screen.ResetPinLogin -> Screen.AdminPin
@@ -206,6 +284,12 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel, isTabletDevice:
     // kiosk stand must not do. Swallows the event; does nothing else.
     BackHandler(enabled = kioskActive && (shown == Screen.Gate || shown == Screen.Register)) {}
 
+    // A persistent side rail for switching between Admin tools, tablet-only
+    // and never while kiosk mode is engaged (a kiosk stand has no admin in
+    // front of it) - the Register wizard is excluded because it already
+    // owns its own full-screen chrome (see AdminSection's own doc comment).
+    val showAdminRail = isTabletDevice && !kioskActive && shown.requiresUnlock && shown != Screen.Register
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -230,7 +314,7 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel, isTabletDevice:
             )
         },
     ) { padding ->
-        Box(modifier = Modifier.padding(padding)) {
+        val content: @Composable () -> Unit = {
             when (shown) {
                 Screen.Gate -> GateDashboardScreen(
                     adminName = user.name,
@@ -308,6 +392,16 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel, isTabletDevice:
                     syncAfterLogin = false,
                     viewModel = authViewModel,
                 )
+            }
+        }
+        Box(modifier = Modifier.padding(padding)) {
+            if (showAdminRail) {
+                Row(modifier = Modifier.fillMaxSize()) {
+                    AdminNavigationRail(current = shown, onSelect = ::navigateFromRail)
+                    Box(modifier = Modifier.weight(1f)) { content() }
+                }
+            } else {
+                content()
             }
         }
     }

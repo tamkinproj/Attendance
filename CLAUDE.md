@@ -562,6 +562,54 @@ this device), the same pieces the old gate screen used.
     `GateHistoryScreen`/`GateHistoryViewModel`, and weren't run on a device
     for the same sandbox reason as the rest of this project's UI work (see
     Kiosk Mode's own note above).
+- **Admin nav rail (tablet, non-kiosk)**: a persistent `NavigationRail`
+  down the left side of every Admin tool - Dashboard, Register, Students,
+  Attendance Summary, Parent SMS, Gate Schedule, Sync & Account, Face
+  Settings, Audit Log, Change PIN, Kiosk Mode - so a tablet-holding admin
+  can jump straight between tools instead of backing out to
+  `GateAdminScreen`'s tile grid each time. Shown whenever
+  `isTabletDevice && !kioskActive && shown.requiresUnlock` (`AppRoot.kt`'s
+  `showAdminRail`) - never on a phone, never while Kiosk Mode is engaged
+  (a kiosk stand has nobody standing at it to use a rail), and never over
+  the Register wizard, which already draws its own full-screen chrome
+  (step bar, back handling) the same way it does everywhere else - tapping
+  the rail's own Register entry still opens it, just without the rail
+  showing once inside.
+  - **Purely additive**: `GateAdminScreen`'s tile grid is completely
+    unchanged and still the content shown at `Screen.AdminHome` - the rail
+    is a second way to reach the same destinations, not a replacement.
+    Implemented by lifting the existing `when (shown) { ... }` route table
+    into a `content: @Composable () -> Unit` lambda (verbatim, no case
+    changed) and choosing, only in the `Box` that renders it, between
+    calling it directly (unchanged behavior: a phone, or a tablet with
+    kiosk on) or inside a `Row(NavigationRail, Box(weight = 1f) { content()
+    })` - so every existing call site keeps working exactly as before, and
+    the two-pane layout is the only new code path.
+  - `AdminSection` (private enum: icon, label, target `Screen`) is the
+    rail's own list, mirroring `GateAdminScreen`'s tiles one-for-one.
+    `navigateFromRail()` mirrors each tile's own `onClick` (Register goes
+    through the wizard's request-id plumbing via `openRegistration(null)`;
+    Gate Schedule always sets `scheduleFromGate = false`, since the rail is
+    only ever shown from inside Admin) so switching tools from the rail
+    behaves identically to tapping the matching tile.
+  - **Scoped down from the fuller "tablet responsiveness" ask** (nav rail
+    *and* two-column master-detail layouts, both named in Phase 7/9's own
+    deferred list). A genuine two-column split - e.g. a student list next
+    to that student's detail, side by side - needs `StudentListScreen` and
+    the registration wizard to both be redesigned around an
+    optionally-embedded detail pane instead of the wizard's own full-screen
+    step flow, which is a much larger, riskier change to get right without
+    a compiler in this sandbox; not attempted here, and not silently
+    dropped either - the rail (a real, self-contained tablet affordance
+    that this pass could implement additively and safely) shipped instead,
+    same "scope down, document what's deferred" discipline as every other
+    large ask in this doc.
+  - `NavigationRail`/`NavigationRailItem` are stable (non-experimental)
+    Material3 API, present since well before this project's pinned
+    `composeBom = "2024.06.00"`. Reviewed by hand, not compiled, for the
+    same sandbox reason as the rest of this project's UI work (see Kiosk
+    Mode's own note above) - worth confirming the rail actually renders
+    and switches screens correctly on a real tablet before relying on it.
 
 ### Backend + web changes (Laravel - not in this repo)
 The user supplied their Laravel source (routes, app, database) and web
