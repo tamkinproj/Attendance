@@ -5,8 +5,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The one piece of kiosk mode's tablet check that's pure logic - see
- * TABLET_SMALLEST_WIDTH_DP's own doc comment for why 600dp is the line.
+ * The one piece of the tablet check that's pure logic - see
+ * TABLET_SMALLEST_WIDTH_DP's own doc comment for why 600dp is the line,
+ * and for why this no longer gates kiosk mode (only the Admin nav rail).
  * The Context-reading overload can't be unit-tested here (no Android
  * framework in this module - see the project's other Robolectric-free
  * pure-JVM tests), so it's kept to one line precisely so this test covers

@@ -47,10 +47,10 @@ class MainActivity : ComponentActivity(), KioskController {
         val isTabletDevice = isTabletFormFactor(this)
         setContent {
             val kioskModeEnabled by deviceSettings.kioskModeEnabled.collectAsState()
-            // Only a tablet with the setting on actually engages kiosk mode -
+            // Kiosk mode engages on the setting alone - a phone or a tablet,
             // see DeviceSettings.kioskModeEnabled's own doc comment for why
-            // the setting itself doesn't gate on the device.
-            val kioskEngaged = isTabletDevice && kioskModeEnabled
+            // this no longer checks isTabletDevice.
+            val kioskEngaged = kioskModeEnabled
 
             // Screen pinning + landscape are Activity APIs, applied here (not
             // from a Composable) as soon as whether kiosk should be active

@@ -3,11 +3,15 @@ package com.muslimedu.attendance.util
 import android.content.Context
 
 /**
- * Kiosk mode is tablet-only (see [com.muslimedu.attendance.ui.kiosk.KioskController]
- * and [com.muslimedu.attendance.ui.screens.admin.KioskModeScreen]) - a phone
- * mounted on a wall doesn't have the screen real estate for a landscape,
- * two-column gate layout, and the user only ever described a tablet on a
- * kiosk stand.
+ * Tablet vs phone, for the pieces of the UI that genuinely need extra
+ * screen real estate - right now just the Admin nav rail
+ * ([com.muslimedu.attendance.ui.navigation.AppRoot]'s `showAdminRail`).
+ * Kiosk mode ([com.muslimedu.attendance.ui.kiosk.KioskController],
+ * [com.muslimedu.attendance.ui.screens.admin.KioskModeScreen]) used to gate
+ * on this too - a tablet on a stand was the only thing the user originally
+ * described - but the user later asked for a phone to be able to run kiosk
+ * mode as well, so kiosk mode no longer checks this at all; it's driven
+ * purely by [com.muslimedu.attendance.data.local.DeviceSettings.kioskModeEnabled].
  *
  * [smallestScreenWidthDp] is the same number Android's own `sw600dp`
  * resource-qualifier convention uses to draw this line, and doesn't change

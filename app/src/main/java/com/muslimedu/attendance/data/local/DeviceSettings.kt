@@ -160,11 +160,13 @@ class DeviceSettings @Inject constructor(
         }
 
     /**
-     * Kiosk mode - the tablet is mounted on a stand for students to scan
+     * Kiosk mode - the device is mounted on a stand for students to scan
      * themselves; see [com.muslimedu.attendance.ui.screens.admin.KioskModeScreen].
-     * Only takes effect on a tablet ([com.muslimedu.attendance.util.isTabletFormFactor])
-     * - the setting itself can still be flipped on a phone (e.g. to prepare
-     * a device before it's handed off), it just has no visible effect there.
+     * Works the same on a phone or a tablet (a phone kiosk was added on
+     * request after tablet-only kiosk mode shipped) - forced dark theme +
+     * landscape + screen pinning, driven straight off this flag with no
+     * [com.muslimedu.attendance.util.isTabletFormFactor] check anywhere in
+     * the kiosk path.
      */
     private val _kioskModeEnabled = MutableStateFlow(prefs.getBoolean(KEY_KIOSK_MODE_ENABLED, false))
     val kioskModeEnabled: StateFlow<Boolean> = _kioskModeEnabled.asStateFlow()

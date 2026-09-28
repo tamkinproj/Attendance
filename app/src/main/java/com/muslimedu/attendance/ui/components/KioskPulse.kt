@@ -29,8 +29,9 @@ import androidx.compose.ui.unit.dp
  * same idea as a sonar ping repeating.
  *
  * Only ever applied when kiosk mode is actually on ([GateDashboardScreen]'s
- * and [GateScanScreen]'s own `kiosk` flag) - a phone or a kiosk-off tablet
- * never runs this at all, so this can't affect their look or battery use.
+ * and [GateScanScreen]'s own `kiosk` flag) - a kiosk-off device (phone or
+ * tablet) never runs this at all, so this can't affect its look or battery
+ * use.
  */
 @Composable
 fun Modifier.kioskPulse(color: Color, maxExtra: Dp = 16.dp, strokeWidth: Dp = 2.5.dp): Modifier {

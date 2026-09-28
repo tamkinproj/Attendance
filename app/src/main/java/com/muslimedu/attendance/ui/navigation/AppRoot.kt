@@ -86,7 +86,11 @@ import com.muslimedu.attendance.viewmodel.RegistrationTarget
 @Composable
 fun AppRoot(
     authViewModel: AuthViewModel = hiltViewModel(),
-    /** True only on a tablet ([com.muslimedu.attendance.util.isTabletFormFactor]) - kiosk mode has no effect on a phone. */
+    /**
+     * True only on a tablet ([com.muslimedu.attendance.util.isTabletFormFactor]).
+     * Only gates the Admin nav rail below - kiosk mode itself now runs on
+     * either form factor, driven purely by DeviceSettings.kioskModeEnabled.
+     */
     isTabletDevice: Boolean = false,
     kioskController: KioskController = NoOpKioskController,
 ) {
@@ -184,14 +188,14 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel, isTabletDevice:
     val kioskViewModel: KioskModeViewModel = hiltViewModel()
     val kioskModeEnabled by kioskViewModel.kioskModeEnabled.collectAsState()
     // Kiosk mode is engaged (screen pinned, forced landscape + dark, no way
-    // out through Back) whenever the setting is on AND this is a tablet -
-    // see DeviceSettings.kioskModeEnabled's doc comment for why the setting
-    // itself doesn't check the device. MainActivity reads the same two
-    // values independently to drive the actual Activity APIs
+    // out through Back) whenever the setting is on - a phone or a tablet,
+    // see DeviceSettings.kioskModeEnabled's doc comment for why this no
+    // longer checks isTabletDevice. MainActivity reads the same value
+    // independently to drive the actual Activity APIs
     // (startLockTask/requestedOrientation/forced dark theme); this copy is
     // only for what's rendered here (the back-button swallow below, and the
     // kiosk look passed into the gate screens).
-    val kioskActive = isTabletDevice && kioskModeEnabled
+    val kioskActive = kioskModeEnabled
 
     // Saveable: if the activity is ever recreated (rotation, theme change,
     // the system restoring the app), the admin stays on the screen they

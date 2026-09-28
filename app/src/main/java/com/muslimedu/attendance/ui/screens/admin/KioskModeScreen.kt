@@ -12,7 +12,6 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tablet
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -30,19 +29,19 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.muslimedu.attendance.ui.components.SectionHeader
 import com.muslimedu.attendance.ui.kiosk.KioskController
-import com.muslimedu.attendance.ui.theme.AccentGold
 import com.muslimedu.attendance.ui.theme.AccentSuccess
 import com.muslimedu.attendance.viewmodel.KioskModeViewModel
 
 /**
- * A tablet mounted on a kiosk stand for students to scan themselves, with
- * nothing else the app can be pushed to and no way to wander off to the
- * home screen: dark theme, forced landscape, and the phone's Home/Recents
- * stop working (Android's own "screen pinning" - see [KioskController]'s
- * doc comment for exactly what that does and doesn't guarantee). None of
- * that touches a phone - the setting can still be turned on there (e.g.
- * to prepare a device before it's handed off), it just has no visible
- * effect.
+ * A phone or tablet mounted on a kiosk stand for students to scan
+ * themselves, with nothing else the app can be pushed to and no way to
+ * wander off to the home screen: dark theme, forced landscape, and the
+ * device's Home/Recents stop working (Android's own "screen pinning" -
+ * see [KioskController]'s doc comment for exactly what that does and
+ * doesn't guarantee). Originally tablet-only (a tablet on a stand was all
+ * the user first described); the user later asked for a phone kiosk stand
+ * too, so this no longer checks device form factor at all - the same
+ * dark/landscape/pinned package now runs on either.
  *
  * The way back in is the same admin button/PIN that already sits on the
  * gate dashboard - kiosk mode never blocks that, only leaving the app
@@ -56,6 +55,7 @@ fun KioskModeScreen(
     viewModel: KioskModeViewModel = hiltViewModel(),
 ) {
     val enabled by viewModel.kioskModeEnabled.collectAsState()
+    val deviceWord = if (isTabletDevice) "tablet" else "phone"
 
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp)) {
         SectionHeader("Kiosk Mode")
@@ -74,27 +74,10 @@ fun KioskModeScreen(
             }
         }
 
-        if (!isTabletDevice) {
-            Card(
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-                colors = CardDefaults.cardColors(containerColor = AccentGold.copy(alpha = 0.12f)),
-            ) {
-                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Warning, contentDescription = null, tint = AccentGold)
-                    Text(
-                        "This device isn't a tablet, so turning this on has no visible effect here - " +
-                            "it only changes anything once this exact setting is on and the device is a tablet.",
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.weight(1f).padding(start = 12.dp),
-                    )
-                }
-            }
-        }
-
         SectionHeader("What this does", modifier = Modifier.padding(top = 24.dp))
         Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Bullet("Forces the dark theme and landscape orientation, whatever the tablet's own settings say.")
+                Bullet("Forces the dark theme and landscape orientation, whatever this $deviceWord's own settings say.")
                 Bullet("Pins the app (Android's \"screen pinning\") so the Home button and Recents stop responding.")
                 Bullet(
                     "Getting in as admin still works exactly the same way - tap the admin button on the gate " +
@@ -117,7 +100,7 @@ fun KioskModeScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
-                        "Try it on this tablet",
+                        "Try it on this $deviceWord",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(start = 8.dp),
@@ -125,7 +108,7 @@ fun KioskModeScreen(
                 }
                 Text(
                     "Screen pinning's first-time prompt (and whether it needs a Settings switch turned on first) " +
-                        "varies by tablet - try it here once before relying on it at the stand. This doesn't touch " +
+                        "varies by device - try it here once before relying on it at the stand. This doesn't touch " +
                         "the switch above.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
