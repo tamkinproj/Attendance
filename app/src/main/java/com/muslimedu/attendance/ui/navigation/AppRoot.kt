@@ -44,6 +44,7 @@ import com.muslimedu.attendance.ui.screens.enrollment.StudentRegistrationScreen
 import com.muslimedu.attendance.ui.screens.gate.GateDashboardScreen
 import com.muslimedu.attendance.ui.screens.gate.GateHistoryScreen
 import com.muslimedu.attendance.ui.screens.gate.GateScanScreen
+import com.muslimedu.attendance.ui.screens.gate.GateSummaryScreen
 import com.muslimedu.attendance.ui.screens.sync.InitialSyncScreen
 import com.muslimedu.attendance.ui.screens.sync.SyncScreen
 import com.muslimedu.attendance.viewmodel.AdminPinViewModel
@@ -98,6 +99,7 @@ private enum class Screen(val title: String, val requiresUnlock: Boolean) {
     AdminPin("Admin", false),
     AdminHome("Admin", true),
     Students("Students", true),
+    AttendanceSummary("Attendance Summary", true),
     Register("Register Student", true),
     ParentSms("Parent SMS", true),
     GateSchedule("Gate Schedule", true),
@@ -281,7 +283,9 @@ private fun GateApp(user: UserDto, authViewModel: AuthViewModel, isTabletDevice:
                     onAuditLog = { navigate(Screen.AuditLog) },
                     onChangePin = { navigate(Screen.ChangePin) },
                     onKioskMode = { navigate(Screen.KioskMode) },
+                    onAttendanceSummary = { navigate(Screen.AttendanceSummary) },
                 )
+                Screen.AttendanceSummary -> GateSummaryScreen()
                 Screen.Students -> StudentListScreen(
                     onRegisterFace = { student -> openRegistration(RegistrationTarget(student, RegistrationStart.FACE)) },
                     onAssignCard = { student -> openRegistration(RegistrationTarget(student, RegistrationStart.CARD)) },

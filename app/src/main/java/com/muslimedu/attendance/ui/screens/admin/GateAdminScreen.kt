@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.HowToReg
@@ -55,6 +56,7 @@ fun GateAdminScreen(
     onAuditLog: () -> Unit,
     onChangePin: () -> Unit,
     onKioskMode: () -> Unit,
+    onAttendanceSummary: () -> Unit,
 ) {
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -82,6 +84,7 @@ fun GateAdminScreen(
                 AdminAction(Icons.Filled.HowToReg, "Register Card, Face & Number", AccentGold, onRegister),
                 AdminAction(Icons.Filled.People, "Students", BrandPrimary, onStudents),
                 AdminAction(Icons.Filled.Sms, "Parent SMS", AccentBlue, onParentSms),
+                AdminAction(Icons.Filled.CalendarToday, "Attendance Summary", BrandPrimary, onAttendanceSummary),
             ),
         )
 

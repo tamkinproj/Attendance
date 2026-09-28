@@ -143,6 +143,10 @@ class GateAttendanceRepository @Inject constructor(
     fun observeForDate(date: String): Flow<List<GateScanEntity>> =
         deviceSettings.schoolId.flatMapLatest { schoolId -> gateScanDao.observeForDate(schoolId, date) }
 
+    /** Every record between [start] and [end] (inclusive, "yyyy-MM-dd") - the on-device Attendance Summary screen. */
+    fun observeForDateRange(start: String, end: String): Flow<List<GateScanEntity>> =
+        deviceSettings.schoolId.flatMapLatest { schoolId -> gateScanDao.observeForDateRange(schoolId, start, end) }
+
     fun observeRecent(limit: Int): Flow<List<GateScanEntity>> =
         deviceSettings.schoolId.flatMapLatest { schoolId -> gateScanDao.observeRecent(schoolId, limit) }
 

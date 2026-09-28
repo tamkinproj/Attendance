@@ -62,6 +62,10 @@ interface GateScanDao {
     @Query("SELECT * FROM gate_scans WHERE school_id = :schoolId AND scan_date = :scanDate ORDER BY scanned_at DESC")
     fun observeForDate(schoolId: Int, scanDate: String): Flow<List<GateScanEntity>>
 
+    /** Every record in [start, end] (inclusive, "yyyy-MM-dd") - the on-device weekly/monthly Attendance Summary. */
+    @Query("SELECT * FROM gate_scans WHERE school_id = :schoolId AND scan_date BETWEEN :start AND :end ORDER BY scan_date ASC, scanned_at ASC")
+    fun observeForDateRange(schoolId: Int, start: String, end: String): Flow<List<GateScanEntity>>
+
     /** Newest first, every outcome - the dashboard's recent list and the history screen. */
     @Query("SELECT * FROM gate_scans WHERE school_id = :schoolId ORDER BY scanned_at DESC LIMIT :limit")
     fun observeRecent(schoolId: Int, limit: Int): Flow<List<GateScanEntity>>

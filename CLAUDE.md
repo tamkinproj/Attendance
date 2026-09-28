@@ -532,6 +532,36 @@ this device), the same pieces the old gate screen used.
     kiosk tablet before relying on it (see "Try it on this tablet" above) -
     OEM skins are known to handle the first-time pinning prompt differently
     from stock Android.
+- **Attendance Summary** (Admin > Attendance Summary, `GateSummaryScreen` +
+  `GateSummaryViewModel`): a week/month roll-up, replacing the old (pre-gate)
+  "Attendance History screen" backlog item, which no longer applies now that
+  classroom attendance is on the web app - `GateHistoryScreen` (day-by-day,
+  filterable) already covers the equivalent gate-side history. Week
+  (Monday-Sunday) or Month toggle, prev/next arrows capped at today ("Jump
+  to today" appears once you've stepped away from the current period, same
+  idea as the web's Gate Reports), stat tiles (Present/Late/Face failed/Days
+  used), and a per-student list sorted worst-late-first.
+  - **Built entirely from this device's own `gate_scans`, on purpose.**
+    `GateAttendanceRepository`'s own doc comment already says gate records
+    are per-device ("other gates' are on the web admin") - a school running
+    more than one gate phone would see an incomplete picture here. The
+    screen says so under the stat tiles, and points at the web's Gate
+    Reports page for the combined, cross-device totals.
+  - **Deliberately does not compute Absent** (`GateSummary`'s own doc
+    comment) - unlike the web's `GateReportService`, one phone has no idea
+    whether a day with nothing recorded means the student wasn't at school,
+    or just scanned at a *different* gate device, or the school was closed
+    that day. Present/Late/Face-failed are safe to show because each only
+    ever adds a real recorded event; Absent would have to infer one from
+    silence this phone can't fully see.
+  - New `GateScanDao.observeForDateRange`/`GateAttendanceRepository
+    .observeForDateRange` (inclusive `scan_date BETWEEN`), no schema change.
+    `GateSummary` (pure: `periodRange`/`shiftAnchor`/`canStepForward`/
+    `build`) is unit-tested (`GateSummaryTest`); the screen/ViewModel follow
+    the same "pure logic tested, Android glue hand-reviewed" split as
+    `GateHistoryScreen`/`GateHistoryViewModel`, and weren't run on a device
+    for the same sandbox reason as the rest of this project's UI work (see
+    Kiosk Mode's own note above).
 
 ### Backend + web changes (Laravel - not in this repo)
 The user supplied their Laravel source (routes, app, database) and web
