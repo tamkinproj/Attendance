@@ -1376,6 +1376,64 @@ uses already existed).
   data (a provider/program/requirements/3 applications/3 documents) seeded
   and cleaned up in the sandbox DB only. Not tested on the real server.
 
+### Scholarship game UI (web only - not in this repo)
+
+The user asked: "on Scholarship all features both admin student ui view
+make it interactive like a game on chat support dont make it modal".
+Delivered as `scholarship-game-update.zip` (60 files in `v2/` + README; no
+server or database change). Every Scholarship / Taqdim / Translation /
+University page, student and staff, rebuilt on a shared kit, and **no
+modals anywhere in the scholarship area** - chats are pages/tabs, every
+old bottom sheet or action sheet is an inline card.
+- **Kit**: `scholarship-game.css/js` (`window.SG`: hero, tiles, ring, bar,
+  segs/steps, journey, swipe `deck`, tabs, `confirmInline`,
+  `openEditor` (inline form card replacing sheet forms), confetti, badge,
+  `fitToViewport` for the inline chats). Pages load `?v=2`.
+  `taqdim-hub.js` is the shared Taqdim/Translation admin landing.
+- **Student**: Browse (swipe deck: right save / up details / left skip, or
+  List), detail (deadline ring, mission list, eligibility quiz, sticky
+  CTA), application quest (one step per screen, upload on pick, journey +
+  confetti after submit), My Applications (journeys), Documents vault,
+  Saved collection, Search (tabs with counts, "Try" chips,
+  `?tab=universities`), Providers / provider page (Scholarships +
+  Universities tabs, guidance tile), university page (courses expand
+  inline), guidance start + guidance chat (link warning is an inline strip,
+  built on the security-update copy), Taqdim/Translation request with an
+  inline Support chat tab.
+- **Staff**: Programs "studio" (readiness meter, tap-to-save status chips,
+  3-step create wizard, per-program Details / Checklist / Universities
+  tabs, hash-routed), Providers (live preview), Universities (profile
+  meter), Courses (pick-one chips, `?university_id=`), Announcements
+  (composer + preview, star to pin), Reports (animated scoreboard), Access
+  (badge toggles + Save/Undo bar), Translation Requests (work queue, "Take
+  the next request", full-page request with upload on pick, assign/status
+  tiles, Completed locked until a translation exists), Taqdim/Translation
+  hub, review queue (inline chat tab, `?application_id=` deep link),
+  numbered requirement builder with reordering, draft review with inline
+  Regenerate/Approve/Reject panels.
+- **Real bugs fixed on the way**: guidance-chat.js's own `renderHeader()`
+  replaced dashboard.js's, so the student guard crashed and the chat never
+  opened; provider-detail.js wrote to a missing `#guidanceCtaWrap`, so
+  every student saw "Could not load this provider."; university-detail
+  read `academicPrograms` but the API sends `academic_programs` (no
+  courses ever shown); Translation Requests read camelCase relations but
+  the API sends `requested_by` / `assigned_to` (object) / `checklist_item`
+  / `source_document` / `translated_document` ("Unknown student", no
+  files); `fetchScholarshipAccess` / `updateScholarshipAccess` were never
+  defined (added to dashboard.js - its only change on top of
+  rate-limit-fix.zip); student application checklist key mismatch, broken
+  document View links, Start button under the bottom nav.
+- Heads-up given, not changed: three of the user's migrations generate
+  index names over MySQL's 64-character limit (taqdim translation tables,
+  universities/academic programs, saved scholarships) - fine if the tables
+  already exist, fails a fresh `migrate`.
+- Verified in Chromium at 390px on a freshly seeded rebuilt test app: 27
+  student checks and 33 staff checks (SuperAdmin + school admin), plus the
+  inline-chat / admin-queue / quest runs - no page errors, no modal
+  overlays, no sideways scroll. Not tested on the real server.
+  `scholarship-applications.js` / `scholarship-document-review.js` (earlier
+  review-queue delivery) are unchanged apart from loading the kit.
+
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
   teal - used for the logo, gradients, big icons. It's only ~3.4:1 on white,
