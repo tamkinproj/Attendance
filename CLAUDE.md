@@ -1542,6 +1542,34 @@ schedule).
   including database checks of every save, and a pass as an Arabic teacher
   with the SQL loaded (both pages rtl and translated). Not tested on the
   real server.
+- **No-scroll + responsive follow-up** (the user: "make it that no scroll
+  design also responsive same to scholarship"; the zip was rebuilt with the
+  same name and replaces v1). Both pages are fixed app screens: `body.tg-app`
+  (`html:has(body.tg-app)` + body at `100dvh`, overflow hidden, flex
+  column), a compact static header, and `.tg-screen` (flex column, `max-width:
+  var(--screen-max)` like the scholarship pages, bottom padding for the
+  fixed nav). Only one list area may scroll, and only when there's more than
+  fits: `.tg-classes`, `.ts-scroll` (kept on the class now/next by
+  `keepCurrentInView()`), and the grading card as a last resort.
+  - Phone: 2 tile columns, the card sized so Save & next sits above the
+    nav; a 4-class day fits as two short lines per class (subject + status
+    chip, then section/room + icon-only Attendance/Grades). Short screens
+    (`max-height` 720 / 600) drop the hero's stats, the Q1-Q4 refs, the win
+    icon and the day title first.
+  - 640px+: 3 tile columns, action labels shown; 1024px+: 4 columns.
+  - 900px+: while grading, `.tg-roster` (every student + mark, tap to jump)
+    replaces the bubble row beside the card; the schedule's day strip
+    becomes a 210px column with full names + "4 classes" (new keys
+    `student_schedule.day_count` / `day_count_one` / `day_none`, Arabic
+    SQL now 76 keys).
+  - Phone on its side (`max-height: 500px` + `min-width: 560px`): hero +
+    tabs left, tiles / the day right; the grading card is two columns and
+    the bottom nav hides while grading; schedule classes are one row each
+    with no free-time rows.
+  - Verified: 0 page scroll and 0 list overflow with the seeded data at
+    360x660, 390x844, 768x1024, 1280x800 and 740x360 (classes, grading
+    card, quarter complete, schedule day), Save & next above the nav at
+    every size; the e2e is now 88 checks, all passing.
 
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
