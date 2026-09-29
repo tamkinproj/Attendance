@@ -1631,6 +1631,91 @@ and rules as before, with no modals, sheets or `confirm()`.
   - The teacher pages' 88 checks still pass.
 - Not tested on the real server.
 
+### Admin pages as a game, part 2 (Laravel + web - not in this repo)
+
+The user picked "More admin pages as a game" from the what's-next list:
+Students / Admissions, Attendance, Fees / Finance and Announcements /
+Messages.
+- **Package**: `admin-game-update.zip`, 24 files. It needs
+  `academics-game-update.zip` first (the AG kit and its `dashboard.js`).
+  - Web: five pages' `.php/.js`, a small kit add-on
+    `admin-game.js/.css` (`window.AX`: avatars, class colours, money,
+    dates, the "+" row) and `admin-dashboard.js`, which gets an
+    Announcements tile (key `announcements`, not the academic
+    `announcementReview`, so orphan schools keep it).
+  - Server: `AttendanceApi.php` and the new
+    `AdminStudentStatusController.php`.
+  - `routes/api.php`: four new lines, also given in the README.
+  - `admin-game-arabic.sql` (245 keys, checked against the user's own
+    Arabic files so none of their wording is overwritten) and a README.
+- **Students** (`students-list`):
+  - Photo tiles grouped by class; filters All / Active / Inactive / Not
+    placed.
+  - Panel with the profile, Edit as an editing quest, Report Card as an
+    inline link (no popup-blocked tab), and Withdraw / Archive / Reactivate
+    with a required reason in an AG.form.
+  - Enrollment history. "+ Add" (was `notWiredYet`) goes to admission.
+- **New Admission** (`admission`): a 9-step quest in a full-width
+  panel (`.ax-solo`).
+  - Steps: name, sign-in, contact, emergency, about, photo (same 200 KB
+    compression), signature (kept as a data URL per stroke), class +
+    section, check.
+  - The walk-in hand-off from preregistrations still skips sign-in and
+    photo and starts at the first open step.
+  - The win screen replaces the old success modal. `?from=students|walkin`
+    decides where X/Done go.
+  - Steps are re-translated in place when the saved language arrives.
+- **Attendance** (`attendance`):
+  - "By class": a day picker, a tile per section (ring, status bar,
+    Submitted / Not taken chips).
+  - A section panel has status "brushes" from Attendance Config; tapping a
+    student saves one mark. "Mark the other N Present" is there too, and a
+    required remark is asked for first.
+  - A locked day shows a lock bar with Unlock.
+  - "Trends" is the old analytics plus unlock.
+- **New server endpoints** (in `AttendanceApi.php`):
+  - `admin_attendance_today`: per section, enrolled / marked / counts /
+    subjects_marked / lock + school statuses.
+  - `admin_attendance_roster`.
+  - `admin_attendance_mark`: `markAttendance` with the school statuses,
+    required remark and edit log. It keeps an existing record's time and
+    source, refuses a locked day with 423, and sends the same absent/late
+    notice as teacher submit.
+  - Sections are scoped through `classes.school_id`
+    (`adminSchoolSection`).
+- **Fees** (`fee-reports`):
+  - Invoice tiles with a paid bar; the hero shows collected / to collect.
+  - Record Payment quest: an amount capped at the balance, then the
+    method (the cashier page's English values + Other), then a check.
+  - New Invoice quest: student, what for, amount, check
+    (`admin_fee_create`).
+  - Tapping an invoice used to be `notWiredYet`.
+- **Announcements** (`announcements`, new page, existing endpoints only):
+  - School posts are the admin's own feed posts (`profile_feed`), with a
+    quest (write, photos, who sees it, preview, `post_create`). Opening
+    one lets you change its privacy (`post_update`) or delete it with an
+    inline confirm.
+  - Class posts come from `admin_announcement_review` and are read-only;
+    the server has no admin edit/delete.
+  - Messages: threads plus a Send quest (`message_user_search` with the
+    `isOppositeGender` rule, then `message_chat_send`); the chat continues
+    in `chat-box.php`.
+- **Bugs found and fixed**:
+  - `admin_children_list` never sends a status, so a withdrawn student
+    showed Active, the Inactive filter was always empty and Reactivate was
+    unreachable. Fixed by the new `admin_students_status`, merged by id; a
+    separate endpoint so the mobile app's list is untouched.
+  - `admin_attendance_unlock` queried `sections.school_id`, which the
+    user's migrations never create, so every Unlock returned 500.
+- Verified in Chromium on the rebuilt test app with 79 checks
+  (`admin-game/e2e-admin-game.js`, fixture `seed_admin_game.php`):
+  - Every save checked in the database.
+  - No page scroll at the 5 sizes.
+  - Arabic via the saved setting on all five pages.
+  - The Academics 104 checks still pass; the count-up wait in that test
+    was widened.
+- Not tested on the real server.
+
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
   teal - used for the logo, gradients, big icons. It's only ~3.4:1 on white,
