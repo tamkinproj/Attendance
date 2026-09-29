@@ -1495,6 +1495,54 @@ scholarship-game zip, so it's included now).
   / Escape / `#chat` link, staff tip, desktop centring. Not tested on the
   real server.
 
+### Teacher pages as a game (web only - not in this repo)
+
+The user asked: "can the teacher schedule and give grade we will make it
+like games interactive like the scholarship?" Delivered as
+`teacher-game-update.zip` (5 web files + the unchanged scholarship game kit
+so it works on its own + optional `teacher-game-arabic.sql`, 73 keys; no
+server or database change). Built on the same kit (`scholarship-game.js/
+.css`) plus a new shared `teacher-game.css` (`.tg-*` grades, `.ts-*`
+schedule).
+- **Enter Grades** (`teacher-grades.js`, same GradebookApi endpoints):
+  quarter tabs (remembered in localStorage) + class tiles with a ring of
+  students graded that quarter -> one student per card (big mark, -/+,
+  quick scores at 75-100% of the quarter's total, DepEd descriptor +
+  percent as you type, optional comment, Q1-Q4 + average chips, a row of
+  student bubbles to jump) -> "Quarter complete" (confetti, class average,
+  top mark, passed at 75%+, descriptor spread). **Save & next saves each
+  student immediately** (Enter too; tapping away from a changed card saves
+  it) instead of one Save at the end; same record rules as before, a saved
+  mark can't be cleared (the server ignores mark: null) so it's put back
+  and the card stays. Offline saves show as pending (offline-data queue).
+  Deep link `?section_id=&subject_id=[&quarter=]`; inside a class the hash
+  is `#class=S:J&q=N` (pushed, so phone Back returns to the list). While
+  grading, the page header is hidden (`body.tg-grading`).
+- **My Schedule** (`student-schedule.js`, shared by teachers and students,
+  same `/my_schedules`): hero = class in progress (ring of minutes left) /
+  next class today (countdown) / done for today / no classes, ticking every
+  30 s; Day view = day strip + the day as a path (done / now with progress
+  / up next / later, free time between classes); teachers get Attendance
+  and Grades (deep link into Enter Grades) on each class, students keep the
+  Subject Status links; Week view = subject tiles + the old table.
+- Found while testing: `teacher_gradebook_submit` writes `strtotime(...)`
+  into `gradebooks.timestamp`, but the user's own fallback migration
+  (`2022_07_25_000001_create_missing_core_tables`, only for fresh installs)
+  makes that column a `timestamp`, so a student's first mark of a quarter
+  fails with "Invalid datetime format" on such a database. Production
+  most likely has an int column already (the legacy web marks screen writes
+  the same number); the README gives the one-line ALTER in case. The test
+  copy's column was changed to INT.
+- A translations redraw (`onLocaleChange`) arriving while a class was
+  still loading used to draw the class list over it; it now leaves a
+  loading class alone and keeps anything typed on the card.
+- Verified: 58 Chromium checks at 390px (`teacher-game/e2e-teacher-game.js`,
+  seeded by `seed_teacher.php`: a teacher, Grade 5 with two sections, three
+  subjects, 14 students, a published timetable, a Q1 exam out of 50),
+  including database checks of every save, and a pass as an Arabic teacher
+  with the SQL loaded (both pages rtl and translated). Not tested on the
+  real server.
+
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
   teal - used for the logo, gradients, big icons. It's only ~3.4:1 on white,
