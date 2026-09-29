@@ -1571,6 +1571,66 @@ schedule).
     card, quarter complete, schedule day), Save & next above the nav at
     every size; the e2e is now 88 checks, all passing.
 
+### Admin Academics as a game (web only - not in this repo)
+
+The user asked (with a screenshot of the admin dashboard's Academics
+section): "on admin side build this interactive game ui also". Delivered
+as `academics-game-update.zip`, 28 files: 8 pages' `.php/.js`, a new
+kit, the scholarship kit (unchanged), `dashboard.js`, one server
+controller, `academics-game-arabic.sql` (282 keys) and a README. The
+pages are Classes & Sections, Class Schedule, Enrollment, Academic Setup,
+Grading Systems, Subjects, Facilities and Attendance Config. Quran
+Tracker, in the same section, is unchanged. They use the same endpoints
+and rules as before, with no modals, sheets or `confirm()`.
+- **Kit** `academics-game.js/.css` (`window.AG`, on top of `SG`):
+  - A no-scroll app screen (`body.ag-app`) holding a list (hero, search,
+    pills, tiles) and a side panel. On a phone the panel takes the
+    screen; from 900px it is a 420px card beside the list.
+  - The panel is keyed in the URL hash with pushState, so phone Back
+    closes it.
+  - `AG.wizard` runs quests: one question per screen, big choice tiles,
+    steppers, toggles, auto-advance, step dots you can jump between when
+    editing, and a win screen with confetti. `AG.form` is a one-screen
+    form.
+  - Delete uses an inline confirm.
+  - `AG.setupNotice` is an inline "Setup completed · N/M, next step" card.
+    It replaces `notifySetupItemSaved`'s modal sheet on these pages.
+- **Pages**:
+  - Classes: class tiles with a seats ring; the class panel lists its
+    sections; a 6-step class quest; an inline section form.
+  - Schedule: a day strip and the day as a path with free gaps. A 7-step
+    quest picks day, time, section (new: the old page never sent
+    `section_id`), subject, teacher and room, marking busy ones, then
+    runs `admin_schedule_check_conflicts`.
+  - Enrollment: stages as a journey you can drag to reorder, with a phone
+    preview of the student instructions.
+  - Academic Setup: year pills, term tiles with progress, a 3-step term
+    quest.
+  - Grading: 15 type tiles.
+  - Subjects: colored tiles and a 5-step quest.
+  - Facilities: a block per building with room tiles; a 4-step room
+    quest.
+  - Attendance Config: status stickers and method rows with an on/off
+    switch; built-ins stay locked.
+- **Bugs fixed on the way**:
+  - Add Term always failed: the old page sent term_type `custom`, which
+    the enum refuses, and allowed empty dates.
+  - A schedule edit that changed day, teacher, room, subject or section
+    got 404. `AcademicScheduleController::update()` looked the row up
+    with the new form values; it now uses id + school only.
+  - `dashboard.js` loaded the saved language only after the admin setup
+    gate and the student enrollment gate, and both return early. So a
+    school admin or a student never got their saved language, only an
+    already-cached bundle. It is now started before those gates.
+- Verified in Chromium on the rebuilt test app with 104 checks
+  (`e2e-academics.js`):
+  - Create, edit and delete on every page, checked in the database.
+  - Drag reorder, Back and deep links.
+  - No page scroll at 360x660, 390x844, 768x1024, 1280x800 and 740x360.
+  - Arabic via the saved setting.
+  - The teacher pages' 88 checks still pass.
+- Not tested on the real server.
+
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
   teal - used for the logo, gradients, big icons. It's only ~3.4:1 on white,
