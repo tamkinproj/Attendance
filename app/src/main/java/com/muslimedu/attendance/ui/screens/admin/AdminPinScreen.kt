@@ -6,16 +6,20 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Backspace
 import androidx.compose.material.icons.filled.Check
@@ -40,6 +44,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -129,7 +134,7 @@ fun AdminPinScreen(
     }
     val canType = !state.isBusy
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
@@ -140,11 +145,19 @@ fun AdminPinScreen(
                 ),
             ),
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Spacer(Modifier.weight(0.6f))
+        // A phone on its side (kiosk mode forces landscape) has well under half
+        // the height the stacked layout needs, so the keypad goes beside the
+        // title there; either way the keys shrink until all four rows fit.
+        val sideBySide = maxWidth > maxHeight && maxHeight < SIDE_BY_SIDE_BELOW
+        val rowGap = if (sideBySide) 10.dp else 16.dp
+        val columnGap = if (sideBySide) 20.dp else 28.dp
+        val keySize = if (sideBySide) {
+            fitKeySize(height = maxHeight - 16.dp, width = maxWidth / 2 - 24.dp, rowGap = rowGap, columnGap = columnGap)
+        } else {
+            fitKeySize(height = maxHeight - STACKED_RESERVED, width = maxWidth - 48.dp, rowGap = rowGap, columnGap = columnGap)
+        }
+
+        val header: @Composable () -> Unit = {
             Text(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
             Text(
                 subtitle,
@@ -175,9 +188,13 @@ fun AdminPinScreen(
                     )
                 }
             }
-            Spacer(Modifier.weight(1f))
+        }
 
+        val keypad: @Composable () -> Unit = {
             Keypad(
+                keySize = keySize,
+                rowGap = rowGap,
+                columnGap = columnGap,
                 enabled = canType,
                 // An older PIN of unknown length is checked with this key instead.
                 showOk = length == null && entered.length >= AdminPinManager.NEW_PIN_LENGTH,
@@ -195,14 +212,61 @@ fun AdminPinScreen(
                 },
                 onOk = { submit(entered) },
             )
+        }
 
-            Box(modifier = Modifier.height(56.dp).padding(top = 8.dp), contentAlignment = Alignment.Center) {
+        val forgot: @Composable () -> Unit = {
+            Box(modifier = Modifier.heightIn(min = 56.dp).padding(top = 8.dp), contentAlignment = Alignment.Center) {
                 if (!state.isCreating) {
-                    TextButton(onClick = onForgotPin) { Text("Forgot the code? Reset with an admin login") }
+                    TextButton(onClick = onForgotPin) {
+                        Text("Forgot the code? Reset with an admin login", textAlign = TextAlign.Center)
+                    }
                 }
             }
         }
+
+        if (sideBySide) {
+            Row(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    header()
+                    forgot()
+                }
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) { keypad() }
+            }
+        } else {
+            Column(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Spacer(Modifier.weight(0.6f))
+                header()
+                Spacer(Modifier.weight(1f))
+                keypad()
+                forgot()
+            }
+        }
     }
+}
+
+/** Below this height a wider-than-tall screen gets the keypad beside the title. */
+private val SIDE_BY_SIDE_BELOW = 600.dp
+
+/** Height the stacked layout needs for everything but the keypad (title, dots, status, forgot link, padding). */
+private val STACKED_RESERVED = 270.dp
+
+private val KEY_SIZE = 76.dp
+private val MIN_KEY_SIZE = 44.dp
+
+/** The largest key, up to [KEY_SIZE], whose 4 rows x 3 columns fit [height] x [width]. */
+private fun fitKeySize(height: Dp, width: Dp, rowGap: Dp, columnGap: Dp): Dp {
+    val byHeight = (height - rowGap * 3) / 4
+    val byWidth = (width - columnGap * 2) / 3
+    return maxOf(MIN_KEY_SIZE, minOf(KEY_SIZE, byHeight, byWidth))
 }
 
 @Composable
@@ -224,32 +288,41 @@ private fun PinDots(count: Int, filled: Int, error: Boolean, modifier: Modifier 
 
 /** 1-9, then [OK when needed] 0 [delete] - round keys like a phone lock screen. */
 @Composable
-private fun Keypad(enabled: Boolean, showOk: Boolean, onDigit: (Char) -> Unit, onDelete: () -> Unit, onOk: () -> Unit) {
+private fun Keypad(
+    keySize: Dp,
+    rowGap: Dp,
+    columnGap: Dp,
+    enabled: Boolean,
+    showOk: Boolean,
+    onDigit: (Char) -> Unit,
+    onDelete: () -> Unit,
+    onOk: () -> Unit,
+) {
     val rows = listOf("123", "456", "789")
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(verticalArrangement = Arrangement.spacedBy(rowGap), horizontalAlignment = Alignment.CenterHorizontally) {
         rows.forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
-                row.forEach { digit -> DigitKey(digit, enabled) { onDigit(digit) } }
+            Row(horizontalArrangement = Arrangement.spacedBy(columnGap)) {
+                row.forEach { digit -> DigitKey(digit, keySize, enabled) { onDigit(digit) } }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(28.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(horizontalArrangement = Arrangement.spacedBy(columnGap), verticalAlignment = Alignment.CenterVertically) {
             if (showOk) {
-                Surface(onClick = onOk, enabled = enabled, shape = CircleShape, color = BrandPrimary, modifier = Modifier.size(KEY_SIZE)) {
+                Surface(onClick = onOk, enabled = enabled, shape = CircleShape, color = BrandPrimary, modifier = Modifier.size(keySize)) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(Icons.Filled.Check, contentDescription = "OK", tint = Color.White)
                     }
                 }
             } else {
-                Spacer(Modifier.size(KEY_SIZE))
+                Spacer(Modifier.size(keySize))
             }
-            DigitKey('0', enabled) { onDigit('0') }
-            Surface(onClick = onDelete, enabled = enabled, shape = CircleShape, color = Color.Transparent, modifier = Modifier.size(KEY_SIZE)) {
+            DigitKey('0', keySize, enabled) { onDigit('0') }
+            Surface(onClick = onDelete, enabled = enabled, shape = CircleShape, color = Color.Transparent, modifier = Modifier.size(keySize)) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         Icons.Filled.Backspace,
                         contentDescription = "Delete",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(30.dp),
+                        modifier = Modifier.size(keySize * 0.4f),
                     )
                 }
             }
@@ -257,19 +330,21 @@ private fun Keypad(enabled: Boolean, showOk: Boolean, onDigit: (Char) -> Unit, o
     }
 }
 
-private val KEY_SIZE = 76.dp
-
 @Composable
-private fun DigitKey(digit: Char, enabled: Boolean, onClick: () -> Unit) {
+private fun DigitKey(digit: Char, keySize: Dp, enabled: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         enabled = enabled,
         shape = CircleShape,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        modifier = Modifier.size(KEY_SIZE),
+        modifier = Modifier.size(keySize),
     ) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
-            Text("$digit", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Normal)
+            Text(
+                "$digit",
+                style = if (keySize < 60.dp) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Normal,
+            )
         }
     }
 }

@@ -380,6 +380,11 @@ this device), the same pieces the old gate screen used.
   5 wrong tries -> 60s lockout, counted persistently). They relock when you
   return to the gate. The PIN screen is an access-code keypad (the user's
   mockup): title, dots, round 1-9 / 0 / delete keys, no system keyboard.
+  The keys size themselves to the space (`fitKeySize`, 44-76dp), and a
+  short, wide screen (a phone in kiosk mode's forced landscape) puts the
+  keypad beside the title - the fixed 76dp stack needed ~576dp of height,
+  so on a phone on its side rows 4-6 squashed into pills and 7-9/0 fell off
+  the screen (user's screenshot).
   New PINs are 4 digits, entered twice ("Create" then "Confirm"); the
   length is stored (`AdminPinManager.pinLength`) so entry checks itself on
   the last dot. An older 4-8 digit PIN with no stored length gets an OK key
