@@ -1460,6 +1460,41 @@ old bottom sheet or action sheet is an inline card.
   `scholarship-applications.js` / `scholarship-document-review.js` (earlier
   review-queue delivery) are unchanged apart from loading the kit.
 
+### Taqdim support chat full screen (web only - not in this repo)
+
+The user asked (with a screenshot of the boxed chat squeezed under the page
+title and requirements list): "make the chat support chat box full screen
+like messenger". Delivered as `taqdim-fullchat-update.zip` (6 files in
+`v2/`, no server change; `taqdim-translation-chat.js` was missing from the
+scholarship-game zip, so it's included now).
+- `taqdim-translation-chat.js`: `renderChatInterface(name, { fullScreen,
+  subtitle, attachments, waiting })` draws a Messenger-style view - top bar
+  (back, avatar, name, subtitle, a Files button with a count that shows the
+  submitted requirements on tap), messages, typing bar - and
+  `mountFullScreen(panel, onBack)` takes over the screen: body class
+  `taqdim-chat-full-open` hides the bottom nav and locks scrolling,
+  `visualViewport` keeps the panel's height/top on the visible area so the
+  typing bar stays above the phone keyboard, Escape = back. The box grows as
+  you type, the keyboard stays up after sending, and the staff "Tip:
+  [FILE:...]" line is folded behind a "?" button.
+- Student page (`taqdim-translation-application.js`) and staff page
+  (`taqdim-translation-applications.js`) render the chat in a
+  `.taqdim-chat-fullscreen` panel (fixed, z-index 1200, centred 760px on a
+  computer) instead of the old inline box. Opening it pushes a history entry
+  (student `#chat`, staff `#app=N&tab=chat`), so the phone's Back button
+  closes the chat and returns to the request; a deep link to the chat has
+  nothing to pop, so its back arrow replaces the hash instead.
+- Not a modal: a view of its own with no backdrop to dismiss.
+- The user's screenshot of the student page also showed the staff-only Tip
+  line and Assign/Change Status buttons behind the chat, which the current
+  files never draw there - most likely a mix of old and new chat files on
+  the live server; the README says to upload all six together.
+- Verified: 33 Chromium checks (`e2e/taqdim-fullchat.js`) at 390px, 1280px
+  and right-to-left - full screen, nav hidden, typing bar at the bottom and
+  following a shrunken viewport, Files toggle, send, phone Back / back arrow
+  / Escape / `#chat` link, staff tip, desktop centring. Not tested on the
+  real server.
+
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
   teal - used for the logo, gradients, big icons. It's only ~3.4:1 on white,
