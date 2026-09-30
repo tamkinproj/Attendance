@@ -1785,6 +1785,48 @@ no DB/route change).
   notice-test.sh`: create, assign teacher, move day/time/room, no-op save,
   subject + note, move section, Arabic student); Academics 104 still pass.
 
+### Teacher Look switch: New / Classic (Laravel + web - not in this repo)
+
+The user asked where best to put a switch back to the classic teacher UI;
+recommended (and then asked to build): a Look switch in the game home's
+profile panel, a "Try the new look" row on the classic home, covering the
+home + Enter Grades + My Schedule, saved on the account. Delivered as
+`teacher-classic-update.zip` (needs teacher-game, admin-game and
+one-back-button zips first).
+- **Classic pages** are the pre-game files under new names
+  (`teacher-dashboard-classic`, `teacher-grades-classic`,
+  `student-schedule-classic` .php/.js; from `admin-game/orig/v2` and
+  `teacher-game/before`, = the user's supplied copies + the offline tile),
+  plus `ui-style.js` and, on the classic home, a "Look" section with "Try
+  the new look" (`teacher-dashboard.php?look=game`).
+- **`ui-style.js`** (in `<head>` of all six pages): pairs each page with its
+  classic copy; `?look=classic|game` stores a dirty choice; before sign-in
+  the device copy (`localStorage muslimedu_teacher_look` = {uid, look,
+  dirty}) picks the page at once (location.replace, query/hash kept); each
+  page's guard callback calls `TeacherLook.sync(user, token)`: non-teachers
+  reset the device copy to game and leave a classic page; a dirty choice is
+  saved to the account; else the account's value wins (null = game, and a
+  device-only choice is pushed up). `TeacherLook.set(user, look)` (the
+  profile's Classic tile) stores dirty + navigates; the next page saves.
+- **Server**: `UiStyleController` (`my_ui_style_get` - a `_get` read for
+  offline-data - / `my_ui_style_save`, `style` in game|classic), column
+  `user_settings.ui_style` (migration `2026_09_30_000001`,
+  `database/sql/teacher-classic.sql`). Its own endpoints so
+  `StudentPortalController::settingsShow/Save` and the `UserSetting` model
+  are untouched (DB::table, insert when no row). 501 until the column
+  exists; the web then keeps the choice on the device only.
+- Found on the way: the first SQL guard (`INSERT ... SELECT MAX(batch) ...
+  WHERE NOT EXISTS`) recorded the migration on every run - an aggregate
+  always returns a row; now the MAX is a derived table. The older shipped
+  SQL files use a non-aggregate form and are fine.
+- `teacher-classic-arabic.sql`: 7 `teacher_home.look*/try_new_look*` keys.
+- Verified: 27 Chromium checks (`classic/e2e-classic.js`: default, switch,
+  DB, three pages + query kept, back, new device follows account, way
+  back, shared-device student (no detour on later visits), no column/501,
+  Arabic, fit at 4 sizes); API checks incl. invalid value and no settings
+  row; SQL run 3 times; teacher home 23, teacher pages 88 and one-back 20
+  still pass.
+
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
   teal - used for the logo, gradients, big icons. It's only ~3.4:1 on white,
