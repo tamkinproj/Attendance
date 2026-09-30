@@ -1947,17 +1947,25 @@ Delivered as `all-new-arabic.sql`, 1,312 texts in `academic_translations`
 - `build.py` checks that every `{placeholder}` matches the English and
   that every value has Arabic letters. The only exceptions are
   `Excel`, `PDF` and `{type} {n}`.
-- Not included: 1,665 texts used by the user's original pages have no
-  Arabic in the user's supplied SQL files (967 of them on pages the
-  updates touched). They are older than these updates, and the live
-  database may already have them. This was offered to the user as a
-  follow-up.
+- **Follow-up ("generate the 967 old ones too"):** the same file now also
+  carries 966 older texts on the pages the updates changed that had no
+  Arabic in the user's files (`changed.py` -> `old_on_changed.json`,
+  written in `o1..o4.py`; `some.key` is only a code-comment example, so
+  it was skipped). The file is 2,278 texts. The chat tip keeps its
+  `[FILE:...]` / `[CREDS:...]` / `[LOCK_NOTE:...]` / `[UNLOCK]` codes as
+  typed. The ~700 remaining old gaps on untouched pages are still not
+  included.
+- Some headings are hard-coded English in the user's own page code (no
+  `t()`, e.g. `student-dashboard.js` "My Learning" / "Identity &
+  Documents"). SQL can't translate those; wrapping them in `t()` is a
+  code change.
 - Verified on the test DB:
   - run twice: 1,312 rows, each once, byte-identical to the source;
-  - 8 pages opened in Arabic via the saved setting as admin, student and
+  - 11 pages opened in Arabic via the saved setting as admin, student and
     teacher (Gate Students, Gate Reports, admin home, Classes, Scholarship
-    Browse / Documents, Take Attendance, teacher home): rtl, and no new
-    key still showing its English (`arabic-all/check-pages.js`).
+    Browse / Documents / My Applications / Saved, student home, Take
+    Attendance, teacher home): rtl, and no new or old key still showing
+    its English (`arabic-all/check-pages.js`).
 
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
