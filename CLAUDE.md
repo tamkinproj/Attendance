@@ -1759,6 +1759,32 @@ scholarship-game / taqdim-fullchat zips; no server change, no new texts).
   link, Arabic); Academics 104, admin 62, teacher home 23, teacher pages 88
   still pass. Not tested on the real server.
 
+### Schedule messages with details (Laravel - not in this repo)
+
+The user sent a Messenger screenshot of "Schedule updated: A new class has
+been added to your schedule." and asked for the message to include all the
+details (day, time etc.). Delivered as `schedule-notice-update.zip` (one
+file, `AcademicScheduleController.php`, on top of the academics zip's copy;
+no DB/route change).
+- `notifyTeacherOfSchedule` (fixed body text) replaced by
+  `notifyScheduleChange($row, $before, $r)`: store() passes null, update()
+  passes `clone $row` taken before `$row->update()`. Title "New class on
+  your schedule" / "Class changed on your schedule" (+ `title_ar`). Body
+  (`scheduleNoticeBody`): subject, "for <Class – Section>" (teacher) or
+  "with <teacher>" (students), "every <Day> from 8:00 AM to 9:00 AM",
+  "in <Room>, <Building>", then " Note: <remarks>"; on an edit each changed
+  piece gets "(was ...)". Day 0 = Sunday (same as `SCHEDULE_INT_TO_DAY`).
+- A teacher or section newly on the slot gets the "new class" version; an
+  edit that changes none of `NOTICE_FIELDS` sends nothing.
+- Per-recipient language from `user_settings.language` ('ar' -> Arabic
+  title + body, subject `name_ar` when set; everyone else English) - two
+  `NotificationController::push` calls. Messenger shows "title: body".
+- Not changed: the teacher/section a class is taken away from, and a
+  deleted class, still get no message (offered to the user).
+- Verified through the real API on the test app (`schedule-notice/
+  notice-test.sh`: create, assign teacher, move day/time/room, no-op save,
+  subject + note, move section, Arabic student); Academics 104 still pass.
+
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
   teal - used for the logo, gradients, big icons. It's only ~3.4:1 on white,
