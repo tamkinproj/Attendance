@@ -1967,6 +1967,65 @@ Delivered as `all-new-arabic.sql`, 1,312 texts in `academic_translations`
     Attendance, teacher home): rtl, and no new or old key still showing
     its English (`arabic-all/check-pages.js`).
 
+### Hard-coded English wrapped in t() (web only - not in this repo)
+
+The user asked (my recommendation from the "what's next" list): "Fix the
+hard-coded English headings ... 'My Learning' and 'Identity & Documents' on
+the student dashboard are typed straight into your page code, so no SQL can
+translate them." Delivered as `hardcoded-english-update.zip`: 36 files in
+`v2/` (one new, `public-i18n.js`), `hardcoded-english-arabic.sql` (376 texts),
+an updated `all-new-arabic.sql` (2,654 texts, contains the 376), a README and
+the test. No server or database-structure change.
+- **How they were found.** `scratchpad/i18n-fix/scan_all.js` (acorn) lists
+  multi-word English string literals and HTML text that are not the 2nd
+  argument of `t()`. Most hits were false positives (enum label maps that
+  already call `t()`, CSS, internal errors, sample data); the real ones were
+  converted, ~380 keys in `reg.json`.
+- **Signed-in pages** use `t('key', 'English')` (or `data-i18n` on the PHP
+  shell's leaf elements). Objects built at load time need getters because the
+  locale bundle arrives later. Done: student dashboard group headings,
+  dashboard.js shared cards (setup checklist, enrollment status, school
+  profile, orphan reports), registrar/admin cards, Offline & Sync
+  (`sync_status.*`), the offline bar (`pwa.*`), the cached-item names
+  (`offline_labels.<english_slug>`, looked up by `labelText()` in
+  offline-data.js), Subscription, Languages (superadmin), translation
+  review/wizard, small ones (Surah N, Yesterday, Document, Face, alumni and
+  placeholder dashboards, Private Team/Links, pre-registration errors).
+  `pwa.js` and `offline-data.js` load where `t` may not exist, so they call it
+  through a `typeof t === 'function'` guard.
+- **`data-i18n-aria`** is new in `applyDomTranslations` (dashboard.js) for
+  icon-only buttons. A `data-i18n` element must be a leaf whose text nothing
+  else rewrites (JS that sets the text later, e.g. an error box or the chosen
+  Quran section, must not carry it: a language change would put the original
+  back - the section label drops its attribute when a section is picked).
+- **Pages before sign-in.** `login.js`, `student-preregister.js` and
+  `alumni-registration.js` already had their own `t()` and a small Arabic
+  table (`LOGIN_AR_FALLBACK`, `AR_FALLBACK`), no server bundle needed: the new
+  texts were added to those tables (and login.php's footer + "Get started"
+  sentence got `data-i18n`). `forgot-password`, `reset-password` and
+  `private-register` had no translation code: new **`public-i18n.js`**
+  (`window.t`, fills `data-i18n`, `data-i18n-placeholder`, `data-i18n-aria`,
+  sets rtl) reads the language the browser last used
+  (`muslimedu_locale` + cached `muslimedu_locale_bundle`) and has its own
+  Arabic table for those three pages, generated from `reg.json` by
+  `build_hc.py` between `/*AR-BEGIN*/` and `/*AR-END*/`.
+- **Left in English on purpose:** public marketing/legal pages, the certified
+  translation templates (`translation-templates-*.js`), dashboard.js's
+  "could not load" splash (runs before translations exist), `offline.html` /
+  `offline-status.js`, values sent to the server, CSV headings, surah names.
+- SQL: `build_hc.py` leaves out any key already in the user's own SQL files
+  (6 keys, e.g. `common.cancel`, `admin_dashboard.your_school`) and checks
+  `{placeholders}` match the English and every value has Arabic letters. Both
+  files run twice on the test DB with one row per key.
+- Verified in Chromium at 390px (`i18n-fix/e2e-i18n.js`, 31 checks, English
+  and Arabic): student dashboard, Offline & Sync (student, teacher; cached
+  item names; offline bar; Online/Offline banner), Subscription, Languages
+  (superadmin), forgot/reset password (incl. the validation and "link sent"
+  messages), private registration, sign-in footer - rtl, every text in
+  Arabic, no English left, no page errors. Still passing: teacher pages 88,
+  teacher home 23, Take Attendance 78, Look switch 29, one-back 20, admin 62,
+  Arabic page check 11. Not tested on the real server.
+
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
   teal - used for the logo, gradients, big icons. It's only ~3.4:1 on white,
