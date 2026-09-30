@@ -2082,6 +2082,37 @@ shadows in their inline styles). No server change.
 - Rounded outlines need Chrome 94+ / Safari 16.4+; older browsers draw the
   swatch rings square.
 
+### Kiosk dashboard: parallax greeting card (web only - not in this repo)
+
+The user sent a screenshot of the teacher home's green greeting card and asked
+for a parallax scroll effect on it, "in dashboard ui all applys if kiosk mode
+ui". Delivered as `kiosk-parallax-update.zip`: `academics-kiosk.css`,
+`academics-kiosk.js`, `teacher-dashboard.php` (`academics-kiosk.css?v=5`,
+`academics-kiosk.js?v=3`). No server change.
+- Opt-in: `.ag-main.ag-px` (only `teacher-dashboard.php` has it). `.ag-main`
+  becomes the scroller and `.ag-top` (the card) and `.ag-list` (the tiles)
+  scroll together; the tiles area is `position: relative; z-index: 2` with the
+  page colour and rounded top corners, so it slides over the card.
+- `AG.top()` (academics-kiosk.js) wires one passive scroll listener per
+  `.ag-px` and writes `--py` (px scrolled) and `--pp` (0-1 through the card's
+  height) on `.sg-hero`, in one rAF. CSS does the rest: card
+  `translateY(--py * .5)` (so it moves at ~half speed), `scale(1 - .08 pp)`,
+  `opacity(1 - .9 pp)`; the `::after` highlight, `.sg-hero-row` and
+  `.sg-hero-stats` get their own factors (.25 / .12 / .2) for depth. Re-render
+  of the card (schedule arriving) re-applies at once.
+- Gotcha: `.sg-pop` (`animation: sgPop ... both`) keeps holding its final
+  `transform` and `opacity`, which silently overrode the parallax. `.ag-px
+  .sg-hero` uses `animation-fill-mode: backwards`.
+- Not applied: phone on its side (card is beside the tiles, `max-height: 500px`
+  + `min-width: 560px` restores the old layout) and `prefers-reduced-motion`.
+  The other Kiosk pages keep their pinned card (their search / filters sit
+  under it); the other role dashboards are not Kiosk-look pages (their
+  `.hero-bg` still uses `wireParallax`, factor 0 = fade only).
+- Verified: scrollTop 0 / 40 / 100 / 180 at 390x844, 360x660, 1280x800 (card
+  at -10 / -40 / -80 where the tiles are at -40 / -90 / -170, opacity 1 ->
+  .79 -> .48 -> .1, back to exactly 0 at the top, no page scroll, no errors);
+  740x360 unchanged.
+
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
   teal - used for the logo, gradients, big icons. It's only ~3.4:1 on white,
