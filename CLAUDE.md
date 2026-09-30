@@ -1855,6 +1855,68 @@ switch's server files; supersedes `teacher-classic-update.zip`).
   cases); Academics 104, admin 62, teacher home 23, teacher 88, one-back
   20. Section names above ("... as a game") are kept as history.
 
+### Take Attendance, Kiosk and no scroll (web only - not in this repo)
+
+The user sent two screenshots of the teacher's Take Attendance page: step 1
+with its plain rows, and step 3's swipe card on a page that scrolled. The
+ask: "make it no scroll on this design also on first image make pick class
+and date is interactive kiosk". Delivered as
+`take-attendance-kiosk-update.zip`: 3 files in `v2/`, plus
+`take-attendance-arabic.sql` with 31 keys. No server or DB change.
+- **One screen.** `teacher-attendance.php` is `body.tg-app.ta-app`. Its
+  root is `.ta-screen`: stepper, `.ta-body`, then the footer. The fixed
+  `.ip-footer` became static inside it. The rules are at the end of
+  `teacher-kiosk.css`; nothing above them changed. `.ta-scroll` (locked
+  roster, gate list) and the class tiles scroll inside themselves.
+- **Step 1** (`renderPickStep`, which replaced `renderPickerRows` and its
+  option sheet):
+  - "Which day?" is a `.ts-days` strip: the last six days (today =
+    "Today"), plus an "Other" chip with the date input laid over it
+    (`showPicker()`; a future date falls back to today).
+  - "Which class?" is `.tg-class` tiles, sorted by that day's
+    `fetchMySchedule` rows (`section_id:subject_id`). Each tile shows its
+    start time, "Now" (today, in progress), or "Homeroom".
+  - Tiles take the subject colour (from any day's timetable).
+  - Tapping a tile ticks it and moves to step 2 after 260 ms. Back keeps
+    the day and class, and Continue stays.
+  - Day names reuse `student_schedule.day_short_*`. The picked date shows
+    "Sep 10" in English and day/month otherwise. Times are wrapped in
+    `<bdi>` so Arabic doesn't show "AM 9:00".
+- **Step 2:** "How will you take it?" with two big `.method-tile`s (two
+  columns from 640px) and a `.ta-picked` class/date pill.
+- **Step 3:** `#attendanceContent.ta-att.ta-att-<method>`.
+  - The swipe group (progress, card, skip, counts) is centred together.
+  - The card stage is `flex: 0 1 330px` (min 150), so it grows on a big
+    phone and gives way first on a small one; the avatar shrinks on short
+    screens.
+  - Phone on its side (`max-height: 500px` + `min-width: 560px`):
+    - the step label hides;
+    - step 1 puts the days (4x2) beside the tiles (3 columns);
+    - swipe: card left, progress / note / counts right;
+    - gate: summary card left, list right;
+    - locked: banner left, list right.
+  - From 900px, the `.ta-days` strip is kept a row; My Schedule turns its
+    `.ts-days` into a column there.
+- **Bug fixed:** the swipe card's note (pencil) and More buttons never got
+  a tap. `onDown` called `setPointerCapture` on the card, so the click
+  went to the card. It already did this before. Pointer-downs on a
+  `button` are now left alone.
+- `take-attendance-arabic.sql` holds the 7 new keys plus the 24 Gate
+  Records keys that had no Arabic in the user's
+  `MASTER_arabic_translations.sql`, in the same delete-then-insert shape.
+- Take Attendance has one look; the Classic/Kiosk switch still covers only
+  the home, Enter Grades and My Schedule.
+- Verified: 78 Chromium checks (`take-att/e2e-take-att.js`, seeded by
+  `seed_teacher.php`, fake clock Tuesday 7:50):
+  - strip, sorting, chips, Other/future date, auto-advance, Back;
+  - swipes saved as present / absent / late rows in `attendances`, and
+    the lock;
+  - no page scroll with buttons and labels on screen at 360x660, 390x844,
+    768x1024, 1280x800 and 740x360 (pick, method, swipe + note, gate);
+  - Arabic.
+  - Teacher pages 88 and teacher home 23 still pass. Not tested on the
+    real server.
+
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
   teal - used for the logo, gradients, big icons. It's only ~3.4:1 on white,
