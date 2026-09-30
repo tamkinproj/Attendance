@@ -2026,6 +2026,33 @@ the test. No server or database-structure change.
   teacher home 23, Take Attendance 78, Look switch 29, one-back 20, admin 62,
   Arabic page check 11. Not tested on the real server.
 
+### Kiosk pages: iOS large-title header (web only - not in this repo)
+
+The user sent a screenshot of My Schedule (back button and title squeezed into
+one row, 10px from the top) and asked for the Apple layout: the back button
+alone on the top row, the title below it, with margins, on every Kiosk page.
+Delivered as `kiosk-header-update.zip`: `teacher-kiosk.css`,
+`academics-kiosk.css`, and the 16 Kiosk pages with only their stylesheet link
+bumped (`teacher-kiosk.css?v=4`, `academics-kiosk.css?v=3`). No server change.
+- `body.tg-app` / `body.ag-app` `.page-header` is `display: block` again: back
+  button row (40px button, `max(8px, safe-area)` top padding), then
+  `.page-title` 30px / line-height 1.1, 6px apart, on the screen's 16px side
+  margin (the same layout as `renderUtilHeader`'s normal pages, just static -
+  these screens don't scroll, so no frosted fade). Header 95px at 390x844.
+  `max-height: 720px`: 36px button, 26px title (81px). Phone on its side
+  (`max-height: 500px` + `min-width: 560px`): one compact row again, back +
+  20px title - iOS collapses large titles in landscape too.
+- Room for it: My Schedule hides `.ts-day-title` under 900px height (the day
+  strip and hero already show the day); Enter Grades hides the hero's
+  `.sg-bar` at 720px or less (Graded / To go already say it).
+- The page never scrolls. A 4-class day fits at 390x844 and 1280x800; at
+  360x660 it scrolls inside `.ts-scroll`, with the class in progress in view.
+  `teacher-game/e2e-teacher-game.js` checks exactly that at 360x660.
+- Verified: header measured on the Kiosk pages at 360x660, 390x844, 768x1024
+  and 740x360 (no page scroll anywhere); teacher 88, Take Attendance 78,
+  Academics 104, admin 62, one-back 20, teacher home 23, Look switch 29 all
+  pass. Not tested on the real server.
+
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
   teal - used for the logo, gradients, big icons. It's only ~3.4:1 on white,
