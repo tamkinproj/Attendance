@@ -1917,6 +1917,48 @@ and date is interactive kiosk". Delivered as
   - Teacher pages 88 and teacher home 23 still pass. Not tested on the
     real server.
 
+### All new Arabic in one SQL (web only - not in this repo)
+
+The user asked: "now generate all arabic trl in sql base what new".
+Delivered as `all-new-arabic.sql`, 1,312 texts in `academic_translations`
+(locale `ar`, `school_id` NULL).
+- **What "new" means here:** a key the current web files use that the
+  user's original `v2` copy never used. `scratchpad/arabic-all/scan.py`
+  collects `t('key', 'English')` and `data-i18n*` keys from both copies.
+  That finds 1,215 new keys:
+  - 633 already had Arabic in the per-update files;
+  - 582 had none: Gate Students, Gate Reports, gate tiles and switches,
+    and the scholarship / Taqdim / Translation / university pages, which
+    had never had Arabic.
+- The 582 were written by hand (`ar1/ar2/ar3.py`), plus the dynamic keys
+  `gate_reports.status_*` (6) and `scholarship_detail.gender_*` (2). The
+  Gate Reports legend keeps the Latin P/L/A/F letters, because the grid
+  shows them.
+- It also carries every key from the 8 earlier Arabic files (quran-wizard,
+  quran-mode-days, teacher-game, academics-game, admin-game, teacher-home,
+  teacher-classic, take-attendance). That includes their dynamic and old
+  keys, such as `student_schedule.day_short_*`, `fee_game.title_*` and
+  `common.back`.
+- It deletes the three pre-Kiosk `teacher_home.look_new*` /
+  `try_new_look` rows.
+- It never includes a key from the user's own Arabic SQL files, so their
+  wording is untouched. It uses the same delete-then-insert shape, in
+  multi-row INSERTs grouped by prefix.
+- `build.py` checks that every `{placeholder}` matches the English and
+  that every value has Arabic letters. The only exceptions are
+  `Excel`, `PDF` and `{type} {n}`.
+- Not included: 1,665 texts used by the user's original pages have no
+  Arabic in the user's supplied SQL files (967 of them on pages the
+  updates touched). They are older than these updates, and the live
+  database may already have them. This was offered to the user as a
+  follow-up.
+- Verified on the test DB:
+  - run twice: 1,312 rows, each once, byte-identical to the source;
+  - 8 pages opened in Arabic via the saved setting as admin, student and
+    teacher (Gate Students, Gate Reports, admin home, Classes, Scholarship
+    Browse / Documents, Take Attendance, teacher home): rtl, and no new
+    key still showing its English (`arabic-all/check-pages.js`).
+
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
   teal - used for the logo, gradients, big icons. It's only ~3.4:1 on white,
