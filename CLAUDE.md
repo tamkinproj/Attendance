@@ -1635,8 +1635,13 @@ and rules as before, with no modals, sheets or `confirm()`.
 
 The user picked "More admin pages as a game" from the what's-next list:
 Students / Admissions, Attendance, Fees / Finance and Announcements /
-Messages.
-- **Package**: `admin-game-update.zip`, 24 files. It needs
+Messages. **Then corrected the design** ("it's better attendance not
+interactive game"; answered "Both" to: admin Attendance plain, teacher
+Take Attendance unchanged, the other teacher UI a game). So Attendance is
+NOT game-style anywhere, and the teacher home is (see below).
+- **Package**: `admin-game-update.zip`, 27 files (replaces the first copy;
+  its `attendance.php/js` are the ORIGINAL plain pages, shipped so a user
+  who uploaded the first copy gets them back). It needs
   `academics-game-update.zip` first (the AG kit and its `dashboard.js`).
   - Web: five pages' `.php/.js`, a small kit add-on
     `admin-game.js/.css` (`window.AX`: avatars, class colours, money,
@@ -1645,9 +1650,12 @@ Messages.
     `announcementReview`, so orphan schools keep it).
   - Server: `AttendanceApi.php` and the new
     `AdminStudentStatusController.php`.
-  - `routes/api.php`: four new lines, also given in the README.
-  - `admin-game-arabic.sql` (245 keys, checked against the user's own
-    Arabic files so none of their wording is overwritten) and a README.
+  - `routes/api.php`: one new line (`admin_students_status`), also given
+    in the README, which says to delete the three `admin_attendance_*`
+    lines if the first copy put them there.
+  - `admin-game-arabic.sql` (213 keys, checked against the user's own
+    Arabic files so none of their wording is overwritten),
+    `teacher-home-arabic.sql` (19 `teacher_home.*` keys) and a README.
 - **Students** (`students-list`):
   - Photo tiles grouped by class; filters All / Active / Inactive / Not
     placed.
@@ -1665,24 +1673,24 @@ Messages.
   - The win screen replaces the old success modal. `?from=students|walkin`
     decides where X/Done go.
   - Steps are re-translated in place when the saved language arrives.
-- **Attendance** (`attendance`):
-  - "By class": a day picker, a tile per section (ring, status bar,
-    Submitted / Not taken chips).
-  - A section panel has status "brushes" from Attendance Config; tapping a
-    student saves one mark. "Mark the other N Present" is there too, and a
-    required remark is asked for first.
-  - A locked day shows a lock bar with Unlock.
-  - "Trends" is the old analytics plus unlock.
-- **New server endpoints** (in `AttendanceApi.php`):
-  - `admin_attendance_today`: per section, enrolled / marked / counts /
-    subjects_marked / lock + school statuses.
-  - `admin_attendance_roster`.
-  - `admin_attendance_mark`: `markAttendance` with the school statuses,
-    required remark and edit log. It keeps an existing record's time and
-    source, refuses a locked day with 423, and sends the same absent/late
-    notice as teacher submit.
-  - Sections are scoped through `classes.school_id`
-    (`adminSchoolSection`).
+- **Attendance** (`attendance`): the original plain page (rate, status
+  breakdown, daily trend, locked days with Unlock), by the user's choice.
+  A first game-style version (class board, status "brushes", and the
+  endpoints `admin_attendance_today/roster/mark`) was built and then
+  removed; those endpoints no longer exist. Only the Unlock bug is fixed
+  (below). The teacher's Take Attendance page (`teacher-attendance`, which
+  already has swipe cards) is untouched.
+- **Teacher home** (`teacher-dashboard.php/js`, game-style on the AG/AX
+  kits): a top card with the greeting and one line from the timetable
+  (`fetchMySchedule`: "4 classes today · now: Mathematics until 10:00
+  AM" / next / all done) plus Today / This week counters; the round photo
+  opens the profile panel (name, staff code, email, Edit Profile, Log Out
+  with an inline confirm - `AG.confirm`); tiles in groups Classroom /
+  Communication / Academics / Account (`tdSections`), filtered by
+  `roleCardOn` as before; tiles with no web page yet are dimmed "Soon"
+  buttons that show a toast; orphan-school and Quran-tracking variants
+  kept. Uses `admin-game.css` `.ax-menu-tile` / `.ax-home`. Not a
+  redesign of My Schedule / Enter Grades (already games).
 - **Fees** (`fee-reports`):
   - Invoice tiles with a paid bar; the hero shows collected / to collect.
   - Record Payment quest: an amount capped at the balance, then the
@@ -1707,13 +1715,16 @@ Messages.
     separate endpoint so the mobile app's list is untouched.
   - `admin_attendance_unlock` queried `sections.school_id`, which the
     user's migrations never create, so every Unlock returned 500.
-- Verified in Chromium on the rebuilt test app with 79 checks
-  (`admin-game/e2e-admin-game.js`, fixture `seed_admin_game.php`):
+- Verified in Chromium on the rebuilt test app: 62 checks
+  (`admin-game/e2e-admin-game.js`, fixture `seed_admin_game.php`) and 23
+  for the teacher home (`admin-game/e2e-teacher-home.js`, fake clock
+  Tuesday 9:10, links, Soon toast, profile + inline log out + real
+  sign-out, 5 sizes, Arabic):
   - Every save checked in the database.
   - No page scroll at the 5 sizes.
-  - Arabic via the saved setting on all five pages.
-  - The Academics 104 checks still pass; the count-up wait in that test
-    was widened.
+  - Arabic via the saved setting.
+  - The Academics 104 and teacher-game 88 checks still pass; the
+    count-up wait in the Academics test was widened.
 - Not tested on the real server.
 
 ### Brand theme (from the logo)
