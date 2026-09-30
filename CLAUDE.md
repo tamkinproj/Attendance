@@ -2113,6 +2113,43 @@ ui". Delivered as `kiosk-parallax-update.zip`: `academics-kiosk.css`,
   .79 -> .48 -> .1, back to exactly 0 at the top, no page scroll, no errors);
   740x360 unchanged.
 
+### Admin Look switch: Kiosk / Classic (web only - not in this repo)
+
+The user asked whether admins should also get Classic + Kiosk; I recommended
+one account-wide Look setting with a Classic copy only for the repetitive
+admin pages, and they said "now build it". Delivered as
+`admin-classic-update.zip` (needs the teacher Look update first: the
+`my_ui_style_*` endpoints and `user_settings.ui_style`; no server change).
+- **`ui-style.js` generalised**: `PAIRS` is now `[kiosk page, classic page,
+  roles that have the choice]`, `ROLES` = teacher/admin/registrar.
+  `window.UiLook` (`TeacherLook` kept as an alias) gains `hasChoice(role)`,
+  `remembered()`, `fetch(token)` and `save(user, token, look)` (resolves
+  `'account'` or `'device'`). `sync()` leaves a classic page for a role that
+  has no choice on it. Same device copy (`muslimedu_teacher_look`), same
+  `?look=classic|kiosk` links, same account column.
+- **Classic pairs** (the pre-Kiosk pages under new names, `.php` + `.js`):
+  `students-list`, `admission`, `fee-reports` (from `admin-game/orig`),
+  `classes-sections`, `class-schedule`, `subjects` (from the academics
+  backup), each `-classic`. Admin has all six; registrar only `admission` and
+  `class-schedule`. Every paired page (both looks) loads `ui-style.js?v=2` and
+  calls `UiLook.sync(user, token)` first thing in its guard callback.
+  Announcements, Attendance, Academic Setup, Enrollment, Grading, Facilities,
+  Attendance Config and Scholarship have no classic copy.
+- **Where to switch**: Account Settings > Look (row + option sheet, `#look`
+  opens it) and an admin dashboard Settings tile `pageLook`. Offline it is
+  kept on the device and saved later (`account_settings.look_device_only`).
+- **Known cost, said plainly**: the classic pages are the originals, so their
+  old bugs return (withdrawn students show Active, "+ Add" and fee-row taps
+  are not wired), and each fix now has to be made twice.
+- `look-arabic.sql`: 3 keys (`admin_dashboard.look_title`, `look_desc`,
+  `account_settings.look_device_only`); the switch's own labels reuse the
+  teacher `teacher_home.look_*` Arabic.
+- Verified in Chromium (`admin-classic/e2e-admin-classic.js`, 29 checks):
+  default stays Kiosk, tile, row + sheet, DB value, all six pages open their
+  classic copy with no errors, query string kept, `?look=kiosk` back, a new
+  device follows the account, Attendance/Announcements never redirect.
+  Not tested on the real server.
+
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
   teal - used for the logo, gradients, big icons. It's only ~3.4:1 on white,
