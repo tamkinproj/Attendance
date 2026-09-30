@@ -2113,6 +2113,54 @@ ui". Delivered as `kiosk-parallax-update.zip`: `academics-kiosk.css`,
   .79 -> .48 -> .1, back to exactly 0 at the top, no page scroll, no errors);
   740x360 unchanged.
 
+### Kiosk pages: header + card scroll with parallax, no colour bars (web only - not in this repo)
+
+The user sent a screenshot of Kiosk Students (pinned green card, blue bar
+on every tile) and asked for every Kiosk page: the card must not stay put
+but scroll with parallax, "also including the back button and title
+text", and every card's colour bar removed. Delivered as
+`kiosk-scroll-update.zip` (5 kit files, `teacher-grades.js`,
+`student-schedule.js`, the 43 Kiosk pages with bumped `?v=`:
+`scholarship-kiosk.css/js?v=4`, `academics-kiosk.css?v=6`/`.js?v=4`,
+`teacher-kiosk.css?v=6`). No server change.
+- **`SG.parallax(scroller)`** (scholarship-kiosk.js) replaces the teacher
+  home's own `ag-px` code: writes `--py`/`--hp` on `.page-header`,
+  `--py`/`--pp` on the first `.sg-hero`, toggles `.ag-stuck` on the bar
+  under the card; a MutationObserver re-applies after redraws (before
+  paint). Adds `.sg-sheet-px` to an element scroller; window pages get
+  `body.sg-px`. Started by AG.init (list column), for `.tg-flow`, or for
+  window on any other page that loads the kit.
+- **Admin pages** (`body.ag-app`, portrait and computer): AG.init moves
+  `#utilHeaderWrap` into `.ag-main`, which becomes the scroller; `.ag-top`
+  is `display: contents`, so the bar after the card (`.ag-tools`,
+  `.ag-pills`, `.ag-days`) is `position: sticky; top: 0` (rounded sheet
+  edge, squared + hairline once stuck) and `.ag-list` is the sheet
+  (z-index 2, page colour; rounded when there's no bar). Header falls behind
+  at 0.4x and fades, card 0.5x + scale + fade. Phone on its side keeps the
+  old grid (header spans both columns, `grid-template-rows: auto 1fr`).
+  New Admission (`.ax-solo`) untouched.
+- **Teacher pages**: `teacher-grades.php` / `student-schedule.php` wrap the
+  header + screen in `.tg-flow` (the scroller, except while grading and on a
+  phone on its side, where it and `.tg-sheet` are `display: contents` and
+  the old inner scrolling applies); the renderers wrap tabs + list in
+  `.tg-sheet`; landscape grid selectors now go through `> .tg-sheet >`.
+  `keepCurrentInView(drawn)` scrolls `.tg-flow` just enough to clear the
+  bottom nav, only when the day is drawn (not on the 30 s tick). Take
+  Attendance unchanged.
+- **Scholarship pages** (`body.sg-px`): the fixed frosted header row is
+  static (large-title layout like the other Kiosk pages, subtitle kept) and
+  scrolls away at 1.3x, fading; the card stays in flow (nothing slides
+  under it) and its row/stats/bar move at 0.18x inside it and fade.
+- Reduced motion turns the movement off.
+- **Colour bars removed**: `.ag-tile::before`, `.tg-class::before`, the
+  side bars on `.ag-stop-card` and My Schedule's `.ts-card`, and
+  `.tg-top-text`'s bar.
+- Verified in Chromium: scroll steps (0/60/160/400) on Students, Classes,
+  Class Schedule, Enter Grades, My Schedule, teacher home and 3 scholarship
+  pages at 390x844, 360x660, 1280x800 and 740x360 (positions, opacity,
+  stuck bar, screenshots, no errors). Academics 104 and the other suites
+  re-run. Not tested on the real server.
+
 ### Admin Look switch: Kiosk / Classic (web only - not in this repo)
 
 The user asked whether admins should also get Classic + Kiosk; I recommended
