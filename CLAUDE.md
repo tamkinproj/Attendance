@@ -2053,6 +2053,35 @@ bumped (`teacher-kiosk.css?v=4`, `academics-kiosk.css?v=3`). No server change.
   Academics 104, admin 62, one-back 20, teacher home 23, Look switch 29 all
   pass. Not tested on the real server.
 
+### Kiosk pages: minimal, no shadows (web only - not in this repo)
+
+The user asked to remove the "3D shadow and shadow" and make every Kiosk page
+minimal. Delivered as `kiosk-flat-update.zip`: the four kit stylesheets and
+the 43 pages that load them (stylesheet links bumped: `scholarship-kiosk.css?v=3`,
+`academics-kiosk.css?v=4`, `admin-kiosk.css?v=4`, `teacher-kiosk.css?v=5`;
+`student-schedule.php` and `scholarship-applications.php` also lose the
+shadows in their inline styles). No server change.
+- `scratchpad/flat-fix/flatten.py` (re-runnable from `flat-fix/before/`):
+  removes every `box-shadow` from the kits (~110) and the two inline blocks,
+  drops `box-shadow` from transitions, and turns the `:active`
+  `translateY(2-3px)` "sink" (made for the 3D bottom edge) into
+  `scale(.97)`. `sgPulse` / `taNow` (a growing halo) now pulse opacity.
+- Shadows that marked a state became flat equivalents: Subjects colour
+  swatches (`outline`, selected = 3px outline in the colour), Enter Grades
+  `.tg-rrow.now` (2px inset outline), `.tg-mark:focus` (outline in the mark
+  colour), the dragged enrollment stage (`.ag-jghost`, emerald border), and
+  the avatar ring (`.ax-ava` 2px white border; none in `.ax-pick` /
+  `.ax-post-top`; 3px in the panel head badge).
+- A "Minimal: flat" block at the end of `scholarship-kiosk.css` and
+  `teacher-kiosk.css` (Take Attendance loads only the latter):
+  `*, *::before, *::after { box-shadow: none !important; text-shadow: none
+  !important; }` - also flattens the shared dashboard.css parts on these
+  pages and inline styles - plus a white back button with a 2px #E6ECEA
+  border (the frosted glass one was only visible thanks to its shadow) and
+  a `:focus-visible` outline. Gradients stay (brand colour, not a shadow).
+- Rounded outlines need Chrome 94+ / Safari 16.4+; older browsers draw the
+  swatch rings square.
+
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
   teal - used for the logo, gradients, big icons. It's only ~3.4:1 on white,
