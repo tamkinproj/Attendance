@@ -1727,6 +1727,38 @@ NOT game-style anywhere, and the teacher home is (see below).
     count-up wait in the Academics test was widened.
 - Not tested on the real server.
 
+### One back button (web only - not in this repo)
+
+The user sent a phone screenshot of Classes & Sections with a panel open:
+the page header's back arrow ("Classes & Sections") and the panel bar's
+back arrow ("Class") stacked, and asked to "fix all back button ... make it
+only one". Delivered as `one-back-button-update.zip` (kits + 13 game pages
++ 3 scholarship pages; upload after the academics / admin-game /
+scholarship-game / taqdim-fullchat zips; no server change, no new texts).
+- **AG kit**: `AG.openPane` sets `body.ag-pane-open` (cleared by
+  `closeNow`); `academics-game.css` hides `#utilHeaderWrap` under 900px
+  while it's set, so the panel's bar (back) or quest head (✕) is the only
+  control. 900px+ was already one (the panel hides its own back there).
+  New Admission (`.ax-solo`) hides the header at every size
+  (`admin-game.css`, `:has`) - its ✕ leaves the same way. Panels that open
+  on `SG.loading()` now carry `AG.bar('')` so a loading panel has a way
+  out (classes-sections x2, class-schedule, subjects).
+- **SG kit**: `SG.headerBack(fn|null)` - a capture-phase click listener on
+  `.page-back-btn` runs `fn` instead of leaving the page while a sub-view
+  is open. Used by `scholarship-programs` (program / #new -> list),
+  `scholarship-translations` (request -> queue) and
+  `taqdim-translation-applications` (request -> queue, also a deep link);
+  their inner "‹ All …" links (`#spBack`, `#backToQueue`, `#tqBack`) are
+  gone. Calls are guarded (`SG.headerBack && ...`) against a stale kit.
+- Version tags bumped (`academics-game.*?v=2`, `admin-game.css?v=2`,
+  `scholarship-game.js?v=3` on the 3 pages) so phones drop cached copies.
+- Wizard footer "previous step" buttons are a different control and stay.
+- Verified: 20 Chromium checks (`admin-game/e2e-one-back.js`: 11 game
+  pages x list/panel/quest at 390x844, 740x360, 1280x800, admission,
+  teacher profile, the 3 scholarship pages' back -> list -> leave, a deep
+  link, Arabic); Academics 104, admin 62, teacher home 23, teacher pages 88
+  still pass. Not tested on the real server.
+
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
   teal - used for the logo, gradients, big icons. It's only ~3.4:1 on white,
