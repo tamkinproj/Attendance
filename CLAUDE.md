@@ -1827,6 +1827,34 @@ one-back-button zips first).
   row; SQL run 3 times; teacher home 23, teacher pages 88 and one-back 20
   still pass.
 
+### "Game" renamed "Kiosk" (web only - not in this repo)
+
+The user asked for the game style to be called Kiosk, "including the file
+name". Delivered as `kiosk-rename-update.zip` (71 web files + the Look
+switch's server files; supersedes `teacher-classic-update.zip`).
+- **Files**: `scholarship-kiosk.js/.css`, `academics-kiosk.js/.css`,
+  `admin-kiosk.js/.css`, `teacher-kiosk.css` (were `*-game.*`); all 42
+  pages and 17 page scripts that load or name them updated (the JS hits
+  were comments). Globals (`SG`/`AG`/`AX`), CSS classes, translation keys
+  (`academics_game.*` etc.) and old zip names are unchanged - never shown,
+  and renaming keys would mean re-running every Arabic SQL. The README says
+  to delete the 7 old files after uploading.
+- **Labels**: the Look switch is **Kiosk** ("Big tiles, one tap at a time",
+  `teacher_home.look_kiosk*`) / Classic; the classic home says "Try the
+  Kiosk look" (`teacher_home.try_kiosk_look`, `?look=kiosk`). The only
+  visible "game" text before was the switch's "Big tiles, like a game".
+- **Look value**: `kiosk` / `classic` (`ui-style.js`, `UiStyleController`);
+  `game` - a saved value, localStorage record or `?look=game` link from the
+  first version - is read as `kiosk` (`norm()` both sides; the API accepts
+  `game` and saves `kiosk`). `teacher-classic-arabic.sql` now has
+  كشك / "جرّب شكل الكشك" and deletes the 3 old keys.
+- Verified: `kiosk/crawl.js` opens all 42 kit pages as their role - every
+  js/css loads from `-kiosk` names, no 404, no page errors, SG/AG/AX
+  present; a static scan of every page's script/link refs finds none
+  missing; Look e2e 29 (adds the legacy `?look=game` + saved `game`
+  cases); Academics 104, admin 62, teacher home 23, teacher 88, one-back
+  20. Section names above ("... as a game") are kept as history.
+
 ### Brand theme (from the logo)
 - Palette in `ui/theme/Color.kt`: `BrandTeal` #369A8E is the logo's exact
   teal - used for the logo, gradients, big icons. It's only ~3.4:1 on white,
